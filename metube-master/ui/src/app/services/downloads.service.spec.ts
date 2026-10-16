@@ -1,0 +1,483 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient, HttpErrorResponse } from '@angular/common/http';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { Subject } from 'rxjs';
+import { DownloadsService, AddDownloadPayload, BrowsePayload } from './downloads.service';
+import { MeTubeSocket } from './metube-socket.service';
+import { Download } from '../interfaces';
+
+class MeTubeSocketStub {
+  private subjects: Record<string, Subject<string>> = {};
+
+  fromEvent(event: string) {
+    if (!this.subjects[event]) {
+      this.subjects[event] = new Subject<string>();
+    }
+    return this.subjects[event].asObservable();
+  }
+
+  emit(event: string, data: string) {
+    if (!this.subjects[event]) {
+      this.subjects[event] = new Subject<string>();
+    }
+    this.subjects[event].next(data);
+  }
+}
+
+function basePayload(): AddDownloadPayload {
+  return {
+    url: 'https://example.com/v',
+    downloadType: 'video',
+    codec: 'auto',
+    quality: 'best',
+    format: 'any',
+    folder: '',
+    customNamePrefix: '',
+    playlistItemLimit: 0,
+    autoStart: true,
+    splitByChapters: false,
+    sponsorblock: false,
+    audioTags: 'with_cover',
+    chapterTemplate: '',
+    subtitleLanguage: 'en',
+    subtitleMode: 'prefer_manual',
+    ytdlOptionsPresets: [],
+    ytdlOptionsOverrides: '',
+    clipStart: '',
+    clipEnd: '',
+    videoPassword: '',
+  };
+}
+
+describe('DownloadsService', () => {
+  let socket: MeTubeSocketStub;
+  let httpMock: HttpTestingController;
+  let service: DownloadsService;
+
+  beforeEach(async () => {
+    socket = new MeTubeSocketStub();
+    await TestBed.configureTestingModule({
+      providers: [
+        DownloadsService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: MeTubeSocket, useValue: socket },
+      ],
+    }).compileComponents();
+
+    service = TestBed.inject(DownloadsService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  it('add() posts snake_case fields matching backend', () => {
+    service.add(basePayload()).subscribe();
+    const req = httpMock.expectOne('add');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(
+      expect.objectContaining({
+        url: 'https://example.com/v',
+        download_type: 'video',
+        codec: 'auto',
+        quality: 'best',
+        format: 'any',
+        playlist_item_limit: 0,
+        auto_start: true,
+        split_by_chapters: false,
+        audio_tags: 'with_cover',
+        chapter_template: '',
+        subtitle_language: 'en',
+        subtitle_mode: 'prefer_manual',
+        ytdl_options_presets: [],
+        ytdl_options_overrides: '',
+      }),
+    );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() sends clip_start and clip_end when set', () => {
+    service
+      .add({
+        ...basePayload(),
+        clipStart: '1:00',
+        clipEnd: '2:00',
+      })
+      .subscribe();
+    const req = httpMock.expectOne('add');
+    expect(req.request.body).toEqual(
+      expect.objectContaining({
+        clip_start: '1:00',
+        clip_end: '2:00',
+      }),
+    );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() sends video_password unchanged (not trimmed) when set', () => {
+    service
+      .add({
+        ...basePayload(),
+        videoPassword: ' s3cret',
+      })
+      .subscribe();
+    const req = httpMock.expectOne('add');
+    expect(req.request.body).toEqual(
+      expect.objectContaining({
+        video_password: ' s3cret',
+      }),
+    );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() omits video_password when empty or unset', () => {
+    service.add(basePayload()).subscribe();
+    let req = httpMock.expectOne('add');
+    expect(req.request.body).not.toHaveProperty('video_password');
+    req.flush({ status: 'ok' });
+
+    service.add({ ...basePayload(), videoPassword: undefined }).subscribe();
+    req = httpMock.expectOne('add');
+    expect(req.request.body).not.toHaveProperty('video_password');
+    req.flush({ status: 'ok' });
+  });
+
+  it('keeps the format catalog the server sends on connect', () => {
+    const seen: unknown[] = [];
+    service.formatsChanged.subscribe(c => seen.push(c));
+    expect(service.formats).toBeNull();
+
+    const catalog = { download_type: { default: 'video', options: [] } };
+    socket.emit('formats', JSON.stringify(catalog));
+
+    expect(service.formats).toEqual(catalog);
+    expect(seen).toEqual([catalog]);
+  });
+
+  it('getPresets() fetches configured preset names', () => {
+    service.getPresets().subscribe((result) => {
+      expect(result).toEqual({ presets: ['Preset A'] });
+    });
+    const req = httpMock.expectOne('presets');
+    expect(req.request.method).toBe('GET');
+    req.flush({ presets: ['Preset A'] });
+  });
+
+  it('retry() posts the failed download id', () => {
+    service.retry('https://example.com/v').subscribe();
+    const req = httpMock.expectOne('retry');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ id: 'https://example.com/v' });
+    req.flush({ status: 'ok' });
+  });
+
+  it('browse() posts snake_case fields matching backend', () => {
+    const payload: BrowsePayload = {
+      url: 'https://example.com/playlist',
+      playlistItemLimit: 25,
+      ytdlOptionsPresets: ['Preset A'],
+      ytdlOptionsOverrides: '{"a":1}',
+    };
+    const entries = [{ url: 'https://example.com/v1', title: 'One', duration: 61 }];
+    let result: unknown;
+    service.browse(payload).subscribe((r) => (result = r));
+    const req = httpMock.expectOne('browse');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      url: 'https://example.com/playlist',
+      playlist_item_limit: 25,
+      ytdl_options_presets: ['Preset A'],
+      ytdl_options_overrides: '{"a":1}',
+    });
+    req.flush({ status: 'ok', title: 'List', entries });
+    expect(result).toEqual({ status: 'ok', title: 'List', entries });
+  });
+
+  it('browse() surfaces HTTP errors as a status object', () => {
+    let result: unknown;
+    service
+      .browse({ url: 'u', playlistItemLimit: 0, ytdlOptionsPresets: [], ytdlOptionsOverrides: '' })
+      .subscribe((r) => (result = r));
+    httpMock
+      .expectOne('browse')
+      .flush({ status: 'error', msg: 'nope' }, { status: 400, statusText: 'Bad Request' });
+    expect(result).toEqual({ status: 'error', msg: 'nope' });
+  });
+
+  it('cancelAdd posts to cancel-add', () => {
+    service.cancelAdd().subscribe();
+    const req = httpMock.expectOne('cancel-add');
+    expect(req.request.method).toBe('POST');
+    req.flush({ status: 'ok' });
+  });
+
+  it('startById posts ids', () => {
+    service.startById(['a', 'b']).subscribe();
+    const req = httpMock.expectOne('start');
+    expect(req.request.body).toEqual({ ids: ['a', 'b'] });
+    req.flush({});
+  });
+
+  it('delById marks items deleting and posts delete', () => {
+    const dl: Download = {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'finished',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+      deleting: false,
+    };
+    service.queue.set('u1', dl);
+    service.delById('queue', ['u1']).subscribe();
+    expect(dl.deleting).toBe(true);
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'queue', ids: ['u1'] });
+    req.flush({});
+  });
+
+  it('delById posts delete_files: true when requested', () => {
+    service.delById('done', ['u1'], true).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: ['u1'], delete_files: true });
+    req.flush({});
+  });
+
+  it('delById posts delete_files: false when requested', () => {
+    service.delById('done', ['u1'], false).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: ['u1'], delete_files: false });
+    req.flush({});
+  });
+
+  it('delById omits delete_files when not specified', () => {
+    service.delById('done', ['u1']).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: ['u1'] });
+    expect(req.request.body).not.toHaveProperty('delete_files');
+    req.flush({});
+  });
+
+  it('delById resets deleting flag and emits error status on HTTP failure', () => {
+    const dl: Download = {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'finished',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+      deleting: false,
+    };
+    service.queue.set('u1', dl);
+    let queueChangedCount = 0;
+    service.queueChanged.subscribe(() => queueChangedCount++);
+    let result: unknown;
+    let threw = false;
+
+    service.delById('queue', ['u1']).subscribe({
+      next: (res) => { result = res; },
+      error: () => { threw = true; },
+    });
+    expect(dl.deleting).toBe(true);
+    const req = httpMock.expectOne('delete');
+    req.flush({ msg: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+    expect(threw).toBe(false);
+    expect(dl.deleting).toBe(false);
+    expect(queueChangedCount).toBeGreaterThan(0);
+    expect((result as { status: string }).status).toBe('error');
+  });
+
+  it('startById surfaces HTTP errors as a status object instead of throwing', () => {
+    let result: unknown;
+    let threw = false;
+
+    service.startById(['a']).subscribe({
+      next: (res) => { result = res; },
+      error: () => { threw = true; },
+    });
+    const req = httpMock.expectOne('start');
+    req.flush({ msg: 'nope' }, { status: 500, statusText: 'Server Error' });
+
+    expect(threw).toBe(false);
+    expect((result as { status: string }).status).toBe('error');
+  });
+
+  it('handleHTTPError extracts msg from object body', async () => {
+    const err = new HttpErrorResponse({
+      error: { msg: 'bad' },
+      status: 400,
+    });
+    const res = await new Promise((resolve) => {
+      service.handleHTTPError(err).subscribe(resolve);
+    });
+    expect((res as { status: string }).status).toBe('error');
+    expect((res as { msg?: string }).msg).toBe('bad');
+  });
+
+  it('socket all updates queue and done', () => {
+    const row: Download = {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'pending',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    };
+    const q: [string, Download][] = [['u1', row]];
+    const d: [string, Download][] = [];
+    socket.emit('all', JSON.stringify([q, d]));
+    expect(service.loading).toBe(false);
+    expect(service.queue.has('u1')).toBe(true);
+  });
+
+  it('socket updated preserves checked and deleting', () => {
+    service.queue.set('u1', {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'pending',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: true,
+      deleting: true,
+    });
+    socket.emit(
+      'updated',
+      JSON.stringify({ url: 'u1', title: 't', status: 'downloading' }),
+    );
+    const updated = service.queue.get('u1');
+    expect(updated?.checked).toBe(true);
+    expect(updated?.deleting).toBe(true);
+  });
+
+  it('socket updated ignores events for urls not already in the queue', () => {
+    expect(service.queue.has('unknown-url')).toBe(false);
+    socket.emit(
+      'updated',
+      JSON.stringify({ url: 'unknown-url', title: 't', status: 'downloading' }),
+    );
+    expect(service.queue.has('unknown-url')).toBe(false);
+  });
+
+  it('socket completed moves entry to done', () => {
+    service.queue.set('u1', {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'pending',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    });
+    socket.emit('completed', JSON.stringify({ url: 'u1', title: 't', status: 'finished' }));
+    expect(service.queue.has('u1')).toBe(false);
+    expect(service.done.has('u1')).toBe(true);
+  });
+
+  it('socket canceled removes from queue', () => {
+    service.queue.set('u1', {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'pending',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    });
+    socket.emit('canceled', JSON.stringify('u1'));
+    expect(service.queue.has('u1')).toBe(false);
+  });
+
+  it('socket cleared removes from done', () => {
+    service.done.set('u1', {
+      id: '1',
+      title: 't',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'finished',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    });
+    socket.emit('cleared', JSON.stringify('u1'));
+    expect(service.done.has('u1')).toBe(false);
+  });
+
+  it('socket configuration updates configuration', () => {
+    socket.emit('configuration', JSON.stringify({ CUSTOM_DIRS: true }));
+    expect(service.configuration['CUSTOM_DIRS']).toBe(true);
+  });
+
+  it('socket custom_dirs updates customDirs', () => {
+    socket.emit('custom_dirs', JSON.stringify({ download_dir: [''] }));
+    expect(service.customDirs['download_dir']).toEqual(['']);
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+  });
+});

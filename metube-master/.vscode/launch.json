@@ -1,0 +1,31 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: MeTube",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/app/main.py",
+            "windows": {
+                "env": {
+                    "DOWNLOAD_DIR": "${env:USERPROFILE}/Downloads",
+                    "STATE_DIR": "${env:TEMP}",
+                    "ALLOW_YTDL_OPTIONS_OVERRIDES": "true",
+                    "YTDL_OPTIONS_PRESETS": "{\"sponsorblock\": {\"postprocessors\": [{\"key\": \"SponsorBlock\", \"categories\": [\"sponsor\", \"selfpromo\", \"interaction\"]}, {\"key\": \"ModifyChapters\", \"remove_sponsor_segments\": [\"sponsor\", \"selfpromo\", \"interaction\"]}]}, \"embed-subs\": {\"writesubtitles\": true, \"writeautomaticsub\": true, \"subtitleslangs\": [\"en\", \"de\"], \"postprocessors\": [{\"key\": \"FFmpegEmbedSubtitle\"}]}, \"limit-rate\": {\"ratelimit\": 5000000}}",
+                }
+            },
+            "osx": {
+                "env": {
+                    "DOWNLOAD_DIR": "${env:HOME}/Downloads",
+                    "STATE_DIR": "${env:TMPDIR}",
+                    "ALLOW_YTDL_OPTIONS_OVERRIDES": "true",
+                    "YTDL_OPTIONS_PRESETS": "{\"sponsorblock\": {\"postprocessors\": [{\"key\": \"SponsorBlock\", \"categories\": [\"sponsor\", \"selfpromo\", \"interaction\"]}, {\"key\": \"ModifyChapters\", \"remove_sponsor_segments\": [\"sponsor\", \"selfpromo\", \"interaction\"]}]}, \"embed-subs\": {\"writesubtitles\": true, \"writeautomaticsub\": true, \"subtitleslangs\": [\"en\", \"de\"], \"postprocessors\": [{\"key\": \"FFmpegEmbedSubtitle\"}]}, \"limit-rate\": {\"ratelimit\": 5000000}}",
+                }
+            },
+            "console": "integratedTerminal"
+        }
+    ]
+}

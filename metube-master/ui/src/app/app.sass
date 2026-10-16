@@ -1,0 +1,259 @@
+.add-url-box
+    max-width: 960px
+    margin: 4rem auto
+
+.metube-section-header
+    font-size: 1.8rem
+    font-weight: 300
+    position: relative
+    background: var(--bs-secondary-bg)
+    padding: 0.5rem 0
+    margin-top: 3.5rem
+
+.metube-section-toggle
+    // Positioned so it paints above the header's full-bleed :before overlay.
+    position: relative
+    display: flex
+    align-items: center
+    // Title left, chevron against the right edge, so all three section titles
+    // stay on the same left margin whether or not a chevron is present.
+    justify-content: space-between
+    gap: 0.75rem
+    width: 100%
+    padding: 0
+    border: 0
+    background: none
+    color: inherit
+    font: inherit
+    text-align: left
+
+.metube-section-chevron
+    font-size: 1.1rem
+    width: 1.1rem
+    color: var(--bs-secondary-color)
+
+.metube-section-header:before
+    content: ""
+    position: absolute
+    top: 0
+    bottom: 0
+    left: -9999px
+    right: 0
+    border-left: 9999px solid var(--bs-secondary-bg)
+    box-shadow: 9999px 0 0 var(--bs-secondary-bg)
+
+button:hover
+    text-decoration: none
+
+th
+    border-top: 0
+    border-bottom-width: 3px !important
+    vertical-align: middle !important
+    white-space: nowrap
+
+td
+    vertical-align: middle
+
+.disabled
+    opacity: 0.5
+    pointer-events: none
+
+.form-switch
+  input
+    margin-top: 5px
+
+.download-progressbar
+    width: 12rem
+    margin-left: auto
+
+.modal.fade.show
+  background-color: rgba(0, 0, 0, 0.5)
+
+.modal-header
+  border-bottom: 1px solid var(--bs-border-color)
+
+.modal-body
+  textarea.form-control
+    resize: vertical
+
+.add-url
+  display: inline-flex
+  align-items: center
+  justify-content: center
+
+  .spinner-border
+    margin-right: 0.5rem
+
+// Download + dropdown toggle fused into one split button. Bootstrap's radius
+// rules only look at direct children of .input-group / .btn-group, so where the
+// pair sits as a middle child of the input group both buttons are squared off
+// by hand: flat against the URL field on the left and Subscribe on the right,
+// and flat between each other. (Not :first-child / :last-child: the last child
+// of the idle group is the dropdown menu, not the toggle.) Inside the narrow
+// layout's btn-group Bootstrap does this itself.
+.input-group > .download-split > .btn
+  border-radius: 0
+
+// In the narrow layout's full-width btn-group the pair stretches like the
+// other buttons; the toggle keeps its own (narrow) width.
+.btn-group > .download-split
+  flex: 1 1 auto
+
+  > .btn:first-child
+    flex: 1 1 auto
+
+  > .dropdown-toggle-split
+    flex: 0 0 auto
+
+.add-progress-btn
+  min-width: 9.5rem
+  cursor: default
+
+.add-cancel-btn
+  min-width: 3.25rem
+
+:host
+  display: flex
+  flex-direction: column
+  min-height: 100vh
+
+main
+  flex-grow: 1
+
+.footer
+  width: 100%
+  padding: 10px 0
+  background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.1))
+
+  .footer-content
+    display: flex
+    justify-content: center
+    align-items: center
+    gap: 20px
+    color: #fff
+    font-size: 0.9rem
+
+    .version-item
+      display: flex
+      align-items: center
+      gap: 8px
+
+      .version-label
+        font-size: 0.75rem
+        text-transform: uppercase
+        letter-spacing: 0.5px
+        opacity: 0.7
+
+      .version-value
+        font-family: monospace
+        font-size: 0.85rem
+        padding: 2px 6px
+        background: rgba(255,255,255,0.1)
+        border-radius: 4px
+
+    .version-separator
+      width: 1px
+      height: 16px
+      background: rgba(255,255,255,0.2)
+      margin: 0 4px
+
+    .github-link
+      display: flex
+      align-items: center
+      gap: 6px
+      color: #fff
+      text-decoration: none
+      font-size: 0.85rem
+      padding: 2px 8px
+      border-radius: 4px
+      transition: background-color 0.2s ease
+
+      &:hover
+        background: rgba(255,255,255,0.1)
+        color: #fff
+        text-decoration: none
+
+      i
+        font-size: 1rem
+
+.download-metrics
+  display: flex
+  align-items: center
+  gap: 16px
+  margin-left: 24px
+
+  .metric
+    display: flex
+    align-items: center
+    gap: 6px
+    font-size: 0.9rem
+    color: #adb5bd
+
+    fa-icon
+      font-size: 1rem
+
+    span
+      white-space: nowrap
+
+.cookie-btn
+  flex: 1 1 auto
+  background-color: var(--bs-secondary-bg)
+  border-color: var(--bs-border-color)
+  color: var(--bs-emphasis-color)
+
+  &:hover
+    background-color: var(--bs-tertiary-bg)
+    border-color: var(--bs-secondary)
+    color: var(--bs-emphasis-color)
+
+  &.disabled
+    opacity: 0.65
+    pointer-events: none
+
+.cookie-active-btn
+  flex: 1 1 auto
+  background-color: var(--bs-success-bg-subtle)
+  border-color: var(--bs-success-border-subtle)
+  color: var(--bs-success-text-emphasis)
+
+  &:hover
+    background-color: var(--bs-success-bg-subtle)
+    border-color: var(--bs-success)
+    color: var(--bs-success-text-emphasis)
+
+  &.disabled
+    opacity: 0.65
+    pointer-events: none
+
+.settings-section-label
+  font-size: 0.8rem
+  text-transform: uppercase
+  letter-spacing: 0.1em
+  font-weight: 600
+  color: var(--bs-body-color)
+  margin-top: 1.75rem
+  margin-bottom: 0.75rem
+
+  &:first-child
+    margin-top: 0
+
+.action-group-label
+  font-size: 0.7rem
+  text-transform: uppercase
+  letter-spacing: 0.05em
+  color: var(--bs-secondary-color)
+  margin-bottom: 0.4rem
+
+.help-title
+  cursor: help
+
+  &:focus
+    outline: none
+
+.cookie-status
+  font-size: 0.8rem
+  margin-top: 0.35rem
+  color: var(--bs-secondary-color)
+
+  &.active
+    color: var(--bs-success-text-emphasis)

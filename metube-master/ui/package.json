@@ -1,0 +1,64 @@
+{
+  "name": "metube",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "build:watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "lint": "ng lint"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "packageManager": "pnpm@12.6.0",
+  "private": true,
+  "dependencies": {
+    "@angular/animations": "^22.2.0",
+    "@angular/common": "^22.2.0",
+    "@angular/compiler": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/platform-browser-dynamic": "^22.2.0",
+    "@angular/service-worker": "^22.2.0",
+    "@fortawesome/angular-fontawesome": "~5.1.0",
+    "@fortawesome/fontawesome-svg-core": "^7.3.1",
+    "@fortawesome/free-brands-svg-icons": "^7.3.1",
+    "@fortawesome/free-regular-svg-icons": "^7.3.1",
+    "@fortawesome/free-solid-svg-icons": "^7.3.1",
+    "@ng-bootstrap/ng-bootstrap": "^21.0.0",
+    "@ng-select/ng-select": "^24.1.2",
+    "@popperjs/core": "^2.11.8",
+    "bootstrap": "^5.3.8",
+    "ngx-cookie-service": "^22.0.0",
+    "ngx-socket-io": "~4.11.1",
+    "rxjs": "~7.8.2",
+    "tslib": "^2.8.1",
+    "zone.js": "0.16.3"
+  },
+  "devDependencies": {
+    "@angular-eslint/builder": "22.5.0",
+    "@angular/build": "^22.2.0",
+    "@angular/cli": "^22.2.0",
+    "@angular/compiler-cli": "^22.2.0",
+    "@angular/localize": "^22.2.0",
+    "@eslint/js": "^10.0.1",
+    "angular-eslint": "22.5.0",
+    "eslint": "^10.11.0",
+    "jsdom": "^30.1.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vitest": "^5.0.1"
+  }
+}
