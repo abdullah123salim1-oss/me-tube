@@ -3,6 +3,7 @@
     <a class="navbar-brand d-flex align-items-center" href="#">
       <img src="assets/icons/android-chrome-192x192.png" alt="MeTube Logo" height="32" class="me-2">
       MeTube
+      <span class="metube-brand-tag">Downloader</span>
     </a>
     <div class="download-metrics">
       @if (activeDownloads > 0) {
@@ -83,11 +84,30 @@
   </div>
 </nav>
 
+<header class="metube-hero">
+  <div class="metube-hero-bg" aria-hidden="true">
+    <span class="metube-hero-blob metube-hero-blob-1"></span>
+    <span class="metube-hero-blob metube-hero-blob-2"></span>
+    <span class="metube-hero-blob metube-hero-blob-3"></span>
+  </div>
+  <div class="container container-xl position-relative">
+    <div class="metube-hero-badge">
+      <fa-icon [icon]="faDownload" />
+      Self-hosted video &amp; music downloader
+    </div>
+    <h1 class="metube-hero-title">Save any video, <em class="metube-hero-title-accent">instantly</em></h1>
+    <p class="metube-hero-subtitle">
+      Paste a link from YouTube, Vimeo, X, TikTok and hundreds of other sites &mdash;
+      choose quality and format, and MeTube saves it straight to your server.
+    </p>
+  </div>
+</header>
+
 <main role="main" class="container container-xl">
   <form #f="ngForm">
-    <div class="container add-url-box">
+    <div class="container add-url-box metube-url-card">
       <!-- Main URL Input with Download Button -->
-      <div class="row mb-4">
+      <div class="row mb-3">
         <div class="col">
           <ng-template #urlBarActions>
             @if (addInProgress && cancelRequested) {
@@ -154,27 +174,44 @@
             <input type="text"
               autocomplete="off"
               spellcheck="false"
-              class="form-control form-control-lg"
-              placeholder="Enter video, channel, or playlist URL"
+              class="form-control form-control-lg metube-url-field"
+              placeholder="Paste a video, channel, or playlist URL"
               [(ngModel)]="addUrl"
               [ngModelOptions]="{standalone: true}"
               [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-            <div class="btn-group w-100" role="group" aria-label="Download or subscribe">
+            <div class="btn-group w-100 metube-url-stack" role="group" aria-label="Download or subscribe">
               <ng-container [ngTemplateOutlet]="urlBarActions" />
             </div>
           </div>
 
           <!-- md and up: standard input-group so Bootstrap handles fused borders -->
-          <div class="input-group input-group-lg shadow-sm d-none d-md-flex">
+          <div class="input-group input-group-lg metube-url-bar d-none d-md-flex">
             <input type="text"
               autocomplete="off"
               spellcheck="false"
               class="form-control form-control-lg"
-              placeholder="Enter video, channel, or playlist URL"
+              placeholder="Paste a video, channel, or playlist URL"
               [(ngModel)]="addUrl"
               [ngModelOptions]="{standalone: true}"
               [disabled]="addInProgress || subscribeInProgress || downloads.loading">
             <ng-container [ngTemplateOutlet]="urlBarActions" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Supported sites (decorative) -->
+      <div class="row mb-3">
+        <div class="col">
+          <div class="metube-site-chips" aria-label="Works with many sites">
+            <span class="metube-chip">YouTube</span>
+            <span class="metube-chip">Vimeo</span>
+            <span class="metube-chip">TikTok</span>
+            <span class="metube-chip">Instagram</span>
+            <span class="metube-chip">X / Twitter</span>
+            <span class="metube-chip">SoundCloud</span>
+            <span class="metube-chip">Twitch</span>
+            <span class="metube-chip">Facebook</span>
+            <span class="metube-chip">+ hundreds more</span>
           </div>
         </div>
       </div>
@@ -306,7 +343,7 @@
       <div class="row mb-3 g-3">
         <div class="col-12 text-start">
           <button type="button"
-            class="btn btn-link p-0 text-decoration-none"
+            class="btn btn-link p-0 text-decoration-none metube-advanced-toggle"
             (click)="toggleAdvanced()"
             [attr.aria-expanded]="isAdvancedOpen"
             aria-controls="advancedOptions">
@@ -658,18 +695,26 @@
       Connecting to server...
     </div>
   }
-  <div class="metube-section-header">
-    <button type="button" class="metube-section-toggle" (click)="toggleDownloadingCollapsed()" [attr.aria-expanded]="!downloadingCollapsed">
-      <span>Downloading</span>
-      <fa-icon [icon]="downloadingCollapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
-    </button>
-  </div>
-  @if (!downloadingCollapsed) {
-    <div class="px-2 py-3 border-bottom">
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt" />&nbsp; Cancel selected</button>
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDownloadSelected (click)="startSelectedDownloads('queue')"><fa-icon [icon]="faDownload" />&nbsp; Download selected</button>
+  <section class="metube-panel">
+    <div class="metube-section-header">
+      <button type="button" class="metube-section-toggle" (click)="toggleDownloadingCollapsed()" [attr.aria-expanded]="!downloadingCollapsed">
+        <span>Downloading</span>
+        <span class="metube-section-count">{{ downloads.queue.size }}</span>
+        <fa-icon [icon]="downloadingCollapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
+      </button>
     </div>
-    <div class="overflow-auto">
+    @if (!downloadingCollapsed) {
+      <div class="metube-panel-toolbar">
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt" />&nbsp; Cancel selected</button>
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDownloadSelected (click)="startSelectedDownloads('queue')"><fa-icon [icon]="faDownload" />&nbsp; Download selected</button>
+      </div>
+      @if (downloads.queue.size === 0) {
+        <div class="metube-empty">
+          <fa-icon [icon]="faDownload" class="metube-empty-icon" />
+          <p>Nothing downloading yet &mdash; paste a URL above to get started</p>
+        </div>
+      } @else {
+        <div class="metube-panel-body">
       <table class="table">
         <thead>
           <tr>
@@ -734,25 +779,35 @@
           }
         </tbody>
       </table>
-    </div>
-  }
+        </div>
+      }
+    }
+  </section>
 
-  <div class="metube-section-header">
-    <button type="button" class="metube-section-toggle" (click)="toggleCompletedCollapsed()" [attr.aria-expanded]="!completedCollapsed">
-      <span>Completed</span>
-      <fa-icon [icon]="completedCollapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
-    </button>
-  </div>
-  @if (!completedCollapsed) {
-    <div class="px-2 py-3 border-bottom">
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="toggleSortOrder()" ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}"><fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />&nbsp; {{ sortAscending ? 'Oldest first' : 'Newest first' }}</button>
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasCompletedDone" (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle" />&nbsp; Clear failed</button>
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="retryFailedDownloads()"><fa-icon [icon]="faRedoAlt" />&nbsp; Retry failed</button>
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDownloadSelected (click)="downloadSelectedFiles()"><fa-icon [icon]="faDownload" />&nbsp; Download Selected</button>
+  <section class="metube-panel">
+    <div class="metube-section-header">
+      <button type="button" class="metube-section-toggle" (click)="toggleCompletedCollapsed()" [attr.aria-expanded]="!completedCollapsed">
+        <span>Completed</span>
+        <span class="metube-section-count">{{ cachedSortedDone.length }}</span>
+        <fa-icon [icon]="completedCollapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
+      </button>
     </div>
-    <div class="overflow-auto">
+    @if (!completedCollapsed) {
+      <div class="metube-panel-toolbar">
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="toggleSortOrder()" ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}"><fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />&nbsp; {{ sortAscending ? 'Oldest first' : 'Newest first' }}</button>
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasCompletedDone" (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle" />&nbsp; Clear failed</button>
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="retryFailedDownloads()"><fa-icon [icon]="faRedoAlt" />&nbsp; Retry failed</button>
+        <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDownloadSelected (click)="downloadSelectedFiles()"><fa-icon [icon]="faDownload" />&nbsp; Download Selected</button>
+      </div>
+      @if (cachedSortedDone.length === 0) {
+        <div class="metube-empty">
+          <fa-icon [icon]="faCheckCircle" class="metube-empty-icon" />
+          <p>Completed downloads will show up here</p>
+        </div>
+      } @else {
+        <div class="metube-panel-body">
       <table class="table">
         <thead>
           <tr>
@@ -896,17 +951,21 @@
       }
         </tbody>
       </table>
-    </div>
-  }
+        </div>
+      }
+    }
+  </section>
 
-  <div class="metube-section-header">
-    <button type="button" class="metube-section-toggle" (click)="toggleSubscriptionsCollapsed()" [attr.aria-expanded]="!subscriptionsCollapsed">
-      <span>Subscriptions</span>
-      <fa-icon [icon]="subscriptionsCollapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
-    </button>
-  </div>
-  @if (!subscriptionsCollapsed) {
-    <div class="px-2 py-3 border-bottom">
+  <section class="metube-panel">
+    <div class="metube-section-header">
+      <button type="button" class="metube-section-toggle" (click)="toggleSubscriptionsCollapsed()" [attr.aria-expanded]="!subscriptionsCollapsed">
+        <span>Subscriptions</span>
+        <span class="metube-section-count">{{ cachedSubs.length }}</span>
+        <fa-icon [icon]="subscriptionsCollapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
+      </button>
+    </div>
+    @if (!subscriptionsCollapsed) {
+      <div class="metube-panel-toolbar">
       @if (checkingAllSubscriptions) {
         <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
           <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check all now
@@ -934,8 +993,14 @@
         [disabled]="downloads.loading || selectedSubscriptionIds.size === 0">
         <fa-icon [icon]="faTrashAlt" />&nbsp; Delete selected
       </button>
-    </div>
-    <div class="overflow-auto">
+      </div>
+      @if (cachedSubs.length === 0) {
+        <div class="metube-empty">
+          <fa-icon [icon]="faClock" class="metube-empty-icon" />
+          <p>No subscriptions yet &mdash; click Subscribe above to follow a channel or playlist</p>
+        </div>
+      } @else {
+        <div class="metube-panel-body">
       <table class="table">
         <thead>
           <tr>
@@ -1077,11 +1142,13 @@
           }
         </tbody>
       </table>
-    </div>
-  }
+        </div>
+      }
+    }
+  </section>
 </main><!-- /.container -->
 
-<footer class="footer navbar-dark bg-dark py-3 mt-5">
+<footer class="footer">
   <div class="container text-center">
     @if (ytDlpVersion && metubeVersion) {
       <div class="footer-content">

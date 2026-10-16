@@ -1,26 +1,848 @@
-/* You can add global styles to this file, and also import other style files */
+/* MeTube — global styles. Modern downloader look: gradient hero, floating
+   URL card, pill CTA buttons and card panels. Works in both themes via
+   Bootstrap's data-bs-theme plus the --mt-* tokens below. */
+
+:root
+  --mt-hero-1: #4338ca
+  --mt-hero-2: #7c3aed
+  --mt-hero-3: #db2777
+  --mt-cta-1: #ff7a45
+  --mt-cta-2: #f43f5e
+  --mt-brand: #6d5cf6
+  --mt-brand-soft: rgba(109, 92, 246, 0.1)
+  --mt-radius-lg: 1.25rem
+  --mt-radius-md: 0.9rem
+  --mt-radius-sm: 0.65rem
+  --mt-surface: #ffffff
+  --mt-surface-2: #f6f7fc
+  --mt-ink: #1b1e34
+  --mt-muted: #66709a
+  --mt-line: #e7e9f4
+  --mt-shadow-card: 0 12px 32px -14px rgba(28, 25, 80, 0.16)
+  --mt-shadow-pop: 0 28px 70px -24px rgba(28, 25, 80, 0.4)
+
+[data-bs-theme="dark"]
+  --mt-surface: #161827
+  --mt-surface-2: #10121f
+  --mt-ink: #eceefe
+  --mt-muted: #9aa2c7
+  --mt-line: rgba(154, 162, 199, 0.16)
+  --mt-brand-soft: rgba(124, 108, 255, 0.16)
+  --mt-shadow-card: 0 12px 32px -14px rgba(0, 0, 0, 0.55)
+  --mt-shadow-pop: 0 28px 70px -22px rgba(0, 0, 0, 0.7)
+
+html
+  scroll-behavior: smooth
+
+body
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif
+  background-color: var(--mt-surface-2)
+  background-image: radial-gradient(1100px 420px at 50% -220px, rgba(124, 58, 237, 0.09), transparent 70%)
+  color: var(--mt-ink)
+
+[data-bs-theme="dark"] body
+  background-image: radial-gradient(1100px 420px at 50% -220px, rgba(124, 58, 237, 0.16), transparent 70%)
+
+::selection
+  background: rgba(124, 58, 237, 0.25)
+
+// ---------------------------------------------------------------------------
+// Navbar
+// ---------------------------------------------------------------------------
 
 .navbar
-    background-color: var(--bs-dark) !important
+  position: sticky
+  top: 0
+  z-index: 1030
+  padding: 0.75rem 0
+  background: linear-gradient(115deg, #221a4d 0%, #4338ca 55%, #6d28d9 100%) !important
+  box-shadow: 0 12px 30px -16px rgba(34, 26, 77, 0.55)
 
-    [data-bs-theme="dark"] &
-        background-color: var(--bs-dark-bg-subtle) !important
+  .navbar-brand
+    font-weight: 700
+    font-size: 1.25rem
+    letter-spacing: 0.01em
+    color: #fff !important
+
+    img
+      border-radius: 0.55rem
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)
+
+  .nav-link
+    color: rgba(255, 255, 255, 0.85)
+
+    &:hover
+      color: #fff
+
+// Theme picker: glass pill button
+.navbar .navbar-nav .btn-link,
+.navbar .dropdown-toggle
+  background: rgba(255, 255, 255, 0.12)
+  border: 1px solid rgba(255, 255, 255, 0.18)
+  border-radius: 999px
+  color: #fff
+  min-width: 2.5rem
+  justify-content: center
+
+  &:hover, &:focus, &:focus-visible
+    background: rgba(255, 255, 255, 0.22)
+    color: #fff
+
+.download-metrics
+  display: flex
+  align-items: center
+  flex-wrap: wrap
+  gap: 0.5rem
+  margin-left: 1.25rem
+
+  .metric
+    display: flex
+    align-items: center
+    gap: 0.4rem
+    padding: 0.28rem 0.7rem
+    border-radius: 999px
+    background: rgba(255, 255, 255, 0.12)
+    border: 1px solid rgba(255, 255, 255, 0.16)
+    font-size: 0.8rem
+    font-weight: 500
+    color: #fff
+
+    fa-icon
+      font-size: 0.9rem
+
+    span
+      white-space: nowrap
+
+@media (max-width: 767.98px)
+  .download-metrics
+    margin-left: 0.75rem
+    gap: 0.35rem
+
+    .metric
+      padding: 0.22rem 0.55rem
+      font-size: 0.72rem
+
+// ---------------------------------------------------------------------------
+// Hero
+// ---------------------------------------------------------------------------
+
+.metube-hero
+  position: relative
+  overflow: hidden
+  padding: 4.25rem 0 8.5rem
+  text-align: center
+  color: #fff
+  background: linear-gradient(135deg, var(--mt-hero-1) 0%, var(--mt-hero-2) 48%, var(--mt-hero-3) 100%)
+
+.metube-hero-bg
+  position: absolute
+  inset: 0
+  pointer-events: none
+
+.metube-hero-blob
+  position: absolute
+  border-radius: 50%
+  filter: blur(60px)
+  opacity: 0.45
+
+  &.metube-hero-blob-1
+    width: 26rem
+    height: 26rem
+    top: -12rem
+    left: -8rem
+    background: #22d3ee
+
+  &.metube-hero-blob-2
+    width: 24rem
+    height: 24rem
+    bottom: -13rem
+    right: -7rem
+    background: #f472b6
+
+  &.metube-hero-blob-3
+    width: 18rem
+    height: 18rem
+    top: -6rem
+    right: 16%
+    background: #fbbf24
+    opacity: 0.25
+
+.metube-hero-badge
+  display: inline-flex
+  align-items: center
+  gap: 0.5rem
+  padding: 0.42rem 1.05rem
+  border-radius: 999px
+  background: rgba(255, 255, 255, 0.14)
+  border: 1px solid rgba(255, 255, 255, 0.28)
+  font-size: 0.78rem
+  font-weight: 600
+  letter-spacing: 0.06em
+  text-transform: uppercase
+  backdrop-filter: blur(6px)
+
+.metube-hero-title
+  margin: 1.15rem 0 0
+  font-size: clamp(2.15rem, 5.2vw, 3.65rem)
+  font-weight: 800
+  line-height: 1.08
+  letter-spacing: -0.02em
+
+.metube-hero-title-accent
+  font-style: normal
+  color: #fde68a
+
+@supports ((-webkit-background-clip: text) or (background-clip: text))
+  .metube-hero-title-accent
+    background: linear-gradient(90deg, #fde68a, #f9a8d4 55%, #e9d5ff)
+    -webkit-background-clip: text
+    background-clip: text
+    color: transparent
+
+.metube-hero-subtitle
+  margin: 1.15rem auto 0
+  max-width: 42rem
+  font-size: 1.12rem
+  line-height: 1.6
+  color: rgba(255, 255, 255, 0.88)
+
+@media (max-width: 767.98px)
+  .metube-hero
+    padding: 3rem 0 6.75rem
+
+  .metube-hero-subtitle
+    font-size: 1rem
+
+// ---------------------------------------------------------------------------
+// Buttons
+// ---------------------------------------------------------------------------
+
+.btn
+  font-weight: 600
+  border-radius: var(--mt-radius-sm)
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease
+
+.btn-primary
+  background-image: linear-gradient(135deg, var(--mt-cta-1), var(--mt-cta-2))
+  border: 0
+  box-shadow: 0 10px 22px -10px rgba(244, 63, 94, 0.55)
+
+  &:hover, &:focus, &:focus-visible, &:not(:disabled):active
+    background-image: linear-gradient(135deg, #ff8a5c, #e82c4c)
+    border: 0
+    box-shadow: 0 14px 28px -10px rgba(244, 63, 94, 0.65)
+
+  &.disabled, &:disabled
+    background-image: linear-gradient(135deg, var(--mt-cta-1), var(--mt-cta-2))
+    opacity: 0.65
+
+.btn-outline-secondary
+  border-color: var(--mt-line)
+  color: var(--mt-ink)
+  background-color: var(--mt-surface)
+
+  &:hover, &:focus, &:focus-visible
+    background-color: var(--mt-brand-soft)
+    border-color: var(--mt-brand)
+    color: var(--mt-brand)
+
+.btn-outline-danger
+  &:hover
+    transform: none
+
+.btn-link
+  color: var(--mt-brand)
+  font-weight: 600
+
+  &:hover
+    color: var(--mt-hero-2)
+
+// Icon action buttons inside tables (skip .p-0 text buttons like Advanced Options / Edit)
+main .btn-link:not(.p-0)
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 2.15rem
+  height: 2.15rem
+  padding: 0 0.35rem
+  border-radius: 0.65rem
+  color: var(--mt-muted)
+
+  &:hover
+    background: var(--mt-brand-soft)
+    color: var(--mt-brand)
+
+main .btn-link.text-danger:not(.p-0)
+  color: #dc3545
+
+  &:hover
+    background: rgba(220, 53, 69, 0.12)
+    color: #dc3545
+
+// Toolbar action links (Cancel selected, Clear completed, ...) — these override
+// the icon-button shape above (same specificity, so this block must stay below
+// it). The !important paddings beat the template's px-0/me-4 utilities.
+main .metube-panel-toolbar .btn-link
+  width: auto
+  height: auto
+  min-width: 0
+  padding: 0.38rem 0.85rem !important
+  margin-right: 0 !important
+  border-radius: 0.65rem
+  font-size: 0.88rem
+  font-weight: 500
+  color: var(--mt-ink)
+
+  &:hover
+    background: var(--mt-brand-soft)
+    color: var(--mt-brand)
+
+  &.disabled
+    opacity: 0.45
+
+button:hover
+  text-decoration: none
+
+// ---------------------------------------------------------------------------
+// Forms
+// ---------------------------------------------------------------------------
+
+.form-control, .form-select
+  border-color: var(--mt-line)
+  border-radius: var(--mt-radius-sm)
+  color: var(--mt-ink)
+  background-color: var(--mt-surface)
+
+  &:focus
+    border-color: var(--mt-brand)
+    box-shadow: 0 0 0 0.22rem rgba(109, 92, 246, 0.18)
+
+.form-control::placeholder
+  color: var(--mt-muted)
+  opacity: 0.85
+
+.form-check-input
+  cursor: pointer
+
+  &:checked
+    background-color: var(--mt-brand)
+    border-color: var(--mt-brand)
+
+.input-group-text
+  border-color: var(--mt-line)
+  background-color: var(--mt-surface-2)
+  color: var(--mt-muted)
+  font-size: 0.78rem
+  font-weight: 600
+  letter-spacing: 0.04em
+  text-transform: uppercase
+
+// Rounded ends for input-groups (labels sit flush left, fields flush right)
+.input-group
+  &:not(.has-validation)
+    > :not(:last-child):not(.dropdown-toggle):not(.dropdown-menu)
+      border-top-right-radius: 0
+      border-bottom-right-radius: 0
+
+  > .form-control:last-child, > .form-select:last-child
+    border-top-right-radius: var(--mt-radius-sm)
+    border-bottom-right-radius: var(--mt-radius-sm)
+
+  > .input-group-text:first-child
+    border-top-left-radius: var(--mt-radius-sm)
+    border-bottom-left-radius: var(--mt-radius-sm)
+
+  > .input-group-text.help-title
+    cursor: help
+
+.form-switch input
+  margin-top: 5px
 
 .ng-select
-    flex: 1
+  flex: 1
 
-    .ng-select-container
-        min-height: 38px
+  .ng-select-container
+    min-height: 38px
+    border-color: var(--mt-line)
+    border-radius: var(--mt-radius-sm)
+    background-color: var(--mt-surface)
 
-    .ng-value
+  .ng-value
+    white-space: nowrap
+    overflow: visible
+
+  .ng-dropdown-panel
+    .ng-dropdown-panel-items
+      max-height: 300px
+
+      .ng-option
         white-space: nowrap
         overflow: visible
+        text-overflow: ellipsis
 
-    .ng-dropdown-panel
-        .ng-dropdown-panel-items
-            max-height: 300px
+// ---------------------------------------------------------------------------
+// The floating URL card (the .add-url-box lives in the app template)
+// ---------------------------------------------------------------------------
 
-            .ng-option
-                white-space: nowrap
-                overflow: visible
-                text-overflow: ellipsis
+.metube-url-card
+  background: var(--mt-surface)
+  border: 1px solid var(--mt-line)
+  border-radius: var(--mt-radius-lg)
+  box-shadow: var(--mt-shadow-pop)
+
+.metube-url-bar > :first-child
+  border-top-left-radius: 1.15rem
+  border-bottom-left-radius: 1.15rem
+
+.metube-url-bar > :last-child
+  border-top-right-radius: 1.15rem
+  border-bottom-right-radius: 1.15rem
+
+.metube-url-field
+  border-radius: 1.15rem
+
+// Narrow layout's stacked button group: chunkier pill ends
+.metube-url-stack
+  --bs-border-radius: 1rem
+
+// Brand tag next to the logo
+.metube-brand-tag
+  margin-left: 0.65rem
+  padding: 0.18rem 0.65rem
+  border-radius: 999px
+  background: rgba(255, 255, 255, 0.16)
+  border: 1px solid rgba(255, 255, 255, 0.22)
+  font-size: 0.64rem
+  font-weight: 700
+  letter-spacing: 0.12em
+  text-transform: uppercase
+  color: rgba(255, 255, 255, 0.85)
+
+@media (max-width: 575.98px)
+  .metube-brand-tag
+    display: none
+
+// Decorative supported-site chips under the URL bar
+.metube-site-chips
+  display: flex
+  flex-wrap: wrap
+  justify-content: center
+  gap: 0.5rem
+
+  .metube-chip
+    padding: 0.32rem 0.85rem
+    border-radius: 999px
+    background: var(--mt-surface-2)
+    border: 1px solid var(--mt-line)
+    color: var(--mt-muted)
+    font-size: 0.78rem
+    font-weight: 600
+
+// Advanced options toggle
+.metube-advanced-toggle
+  font-weight: 600
+  color: var(--mt-brand)
+
+  &:hover
+    color: var(--mt-hero-2)
+
+.settings-section-label
+  display: flex
+  align-items: center
+  gap: 0.55rem
+  font-size: 0.74rem
+  text-transform: uppercase
+  letter-spacing: 0.12em
+  font-weight: 700
+  color: var(--mt-muted)
+  margin-top: 1.65rem
+  margin-bottom: 0.85rem
+
+  &::after
+    content: ""
+    flex: 1
+    height: 1px
+    background: var(--mt-line)
+
+  &:first-child
+    margin-top: 0
+
+.action-group-label
+  font-size: 0.72rem
+  text-transform: uppercase
+  letter-spacing: 0.08em
+  font-weight: 700
+  color: var(--mt-muted)
+  margin-bottom: 0.45rem
+
+.help-title
+  cursor: help
+
+  &:focus
+    outline: none
+
+.cookie-btn
+  flex: 1 1 auto
+  background-color: var(--mt-surface-2)
+  border-color: var(--mt-line)
+  color: var(--mt-ink)
+
+  &:hover
+    background-color: var(--mt-brand-soft)
+    border-color: var(--mt-brand)
+    color: var(--mt-brand)
+
+  &.disabled
+    opacity: 0.65
+    pointer-events: none
+
+.cookie-active-btn
+  flex: 1 1 auto
+  background-color: rgba(25, 135, 84, 0.12)
+  border-color: rgba(25, 135, 84, 0.35)
+  color: #198754
+
+  &:hover
+    background-color: rgba(25, 135, 84, 0.18)
+    border-color: #198754
+    color: #198754
+
+  &.disabled
+    opacity: 0.65
+    pointer-events: none
+
+.cookie-status
+  font-size: 0.8rem
+  margin-top: 0.35rem
+  color: var(--mt-muted)
+
+  &.active
+    color: #198754
+
+// ---------------------------------------------------------------------------
+// Panels (Downloading / Completed / Subscriptions)
+// ---------------------------------------------------------------------------
+
+.metube-panel
+  background: var(--mt-surface)
+  border: 1px solid var(--mt-line)
+  border-radius: var(--mt-radius-lg)
+  box-shadow: var(--mt-shadow-card)
+  margin-bottom: 1.75rem
+  overflow: hidden
+
+.metube-section-header
+  margin: 0
+  padding: 0
+  background: none
+
+.metube-section-toggle
+  display: flex
+  align-items: center
+  gap: 0.75rem
+  width: 100%
+  padding: 1.15rem 1.5rem
+  border: 0
+  background: none
+  color: var(--mt-ink)
+  font: inherit
+  font-size: 1.12rem
+  font-weight: 700
+  text-align: left
+
+  &:hover
+    color: var(--mt-brand)
+
+.metube-section-count
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 1.75rem
+  padding: 0.12rem 0.55rem
+  border-radius: 999px
+  background: var(--mt-brand-soft)
+  color: var(--mt-brand)
+  font-size: 0.78rem
+  font-weight: 700
+
+.metube-section-chevron
+  margin-left: auto
+  font-size: 1rem
+  width: 1rem
+  color: var(--mt-muted)
+
+.metube-panel-toolbar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 0.35rem 0.55rem
+  padding: 0.85rem 1.5rem
+  border-top: 1px solid var(--mt-line)
+  border-bottom: 1px solid var(--mt-line)
+  background: var(--mt-surface-2)
+
+.metube-panel-body
+  overflow: auto
+
+.metube-empty
+  display: flex
+  flex-direction: column
+  align-items: center
+  gap: 0.55rem
+  padding: 2.75rem 1.5rem
+  color: var(--mt-muted)
+
+  .metube-empty-icon
+    font-size: 2.1rem
+    opacity: 0.4
+
+  p
+    margin: 0
+    font-size: 0.95rem
+
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+th
+  border-top: 0
+  border-bottom: 1px solid var(--mt-line) !important
+  vertical-align: middle !important
+  white-space: nowrap
+
+td
+  vertical-align: middle
+
+.table
+  --bs-table-bg: transparent
+  margin-bottom: 0
+  color: var(--mt-ink)
+
+  > :not(caption) > * > *
+    padding: 0.95rem 1.25rem
+    background: transparent
+    border-bottom-color: var(--mt-line)
+
+  thead th
+    background: var(--mt-surface-2)
+    color: var(--mt-muted)
+    font-size: 0.72rem
+    font-weight: 700
+    text-transform: uppercase
+    letter-spacing: 0.07em
+
+  tbody tr
+    transition: background-color 0.12s ease
+
+    &:hover
+      background: var(--mt-brand-soft)
+
+  tbody tr:last-child > td
+    border-bottom: 0
+
+.disabled
+  opacity: 0.5
+  pointer-events: none
+
+// ---------------------------------------------------------------------------
+// Progress bars / badges
+// ---------------------------------------------------------------------------
+
+.progress
+  background: var(--mt-surface-2)
+  border-radius: 999px
+  overflow: hidden
+
+.progress-bar
+  border-radius: 999px
+  font-weight: 600
+
+.progress-bar.bg-success
+  background-image: linear-gradient(90deg, #10b981, #34d399)
+
+.badge
+  font-weight: 600
+  border-radius: 999px
+  padding: 0.32em 0.75em
+
+.download-progressbar
+  width: 12rem
+  margin-left: auto
+
+.add-progress-btn
+  min-width: 9.5rem
+  cursor: default
+
+.add-cancel-btn
+  min-width: 3.25rem
+
+.add-url
+  display: inline-flex
+  align-items: center
+  justify-content: center
+
+  .spinner-border
+    margin-right: 0.5rem
+
+// Download + dropdown toggle fused into one split button. Bootstrap's radius
+// rules only look at direct children of .input-group / .btn-group, so where the
+// pair sits as a middle child of the input group both buttons are squared off
+// by hand: flat against the URL field on the left and Subscribe on the right,
+// and flat between each other. (Not :first-child / :last-child: the last child
+// of the idle group is the dropdown menu, not the toggle.) Inside the narrow
+// layout's btn-group Bootstrap does this itself.
+.input-group > .download-split > .btn
+  border-radius: 0
+
+// In the narrow layout's full-width btn-group the pair stretches like the
+// other buttons; the toggle keeps its own (narrow) width.
+.btn-group > .download-split
+  flex: 1 1 auto
+
+  > .btn:first-child
+    flex: 1 1 auto
+
+  > .dropdown-toggle-split
+    flex: 0 0 auto
+
+// ---------------------------------------------------------------------------
+// Dropdowns / modals / popovers / toasts
+// ---------------------------------------------------------------------------
+
+.dropdown-menu
+  border-color: var(--mt-line)
+  border-radius: var(--mt-radius-md)
+  box-shadow: var(--mt-shadow-pop)
+  padding: 0.4rem
+
+.dropdown-item
+  border-radius: 0.55rem
+  padding: 0.45rem 0.85rem
+
+  &.active
+    background-color: var(--mt-brand)
+
+.modal.fade.show
+  background-color: rgba(12, 12, 32, 0.55)
+  backdrop-filter: blur(3px)
+
+.modal-content
+  border: 1px solid var(--mt-line)
+  border-radius: var(--mt-radius-lg)
+  box-shadow: var(--mt-shadow-pop)
+  background: var(--mt-surface)
+
+.modal-header
+  border-bottom: 1px solid var(--mt-line)
+
+.modal-footer
+  border-top: 1px solid var(--mt-line)
+
+.modal-body
+  textarea.form-control
+    resize: vertical
+
+.alert
+  border: 1px solid var(--mt-line)
+  border-radius: var(--mt-radius-md)
+
+.alert-info
+  background: var(--mt-surface)
+  color: var(--mt-ink)
+
+.toast
+  border-radius: var(--mt-radius-md)
+  box-shadow: var(--mt-shadow-card)
+
+.progress
+  > .progress-bar
+    font-size: 0.78rem
+
+// ---------------------------------------------------------------------------
+// Footer
+// ---------------------------------------------------------------------------
+
+.footer
+  width: 100%
+  padding: 1.35rem 0
+  margin-top: 3.5rem
+  background: linear-gradient(115deg, #1c1638 0%, #2b2064 60%, #4c1d95 100%)
+  border-top: 1px solid rgba(255, 255, 255, 0.08)
+
+  .footer-content
+    display: flex
+    justify-content: center
+    align-items: center
+    flex-wrap: wrap
+    gap: 1.1rem
+    color: #fff
+    font-size: 0.9rem
+
+  .version-item
+    display: flex
+    align-items: center
+    gap: 8px
+
+    .version-label
+      font-size: 0.72rem
+      text-transform: uppercase
+      letter-spacing: 0.08em
+      opacity: 0.7
+
+    .version-value
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+      font-size: 0.82rem
+      padding: 2px 8px
+      background: rgba(255, 255, 255, 0.12)
+      border-radius: 6px
+
+  .version-separator
+    width: 1px
+    height: 16px
+    background: rgba(255, 255, 255, 0.2)
+
+  .github-link
+    display: flex
+    align-items: center
+    gap: 6px
+    color: #fff
+    text-decoration: none
+    font-size: 0.85rem
+    padding: 0.32rem 0.85rem
+    border-radius: 999px
+    background: rgba(255, 255, 255, 0.1)
+    border: 1px solid rgba(255, 255, 255, 0.16)
+    transition: background-color 0.2s ease
+
+    &:hover
+      background: rgba(255, 255, 255, 0.2)
+      color: #fff
+      text-decoration: none
+
+// ---------------------------------------------------------------------------
+// Scrollbars
+// ---------------------------------------------------------------------------
+
+*
+  scrollbar-width: thin
+  scrollbar-color: rgba(109, 92, 246, 0.4) transparent
+
+*::-webkit-scrollbar
+  width: 10px
+  height: 10px
+
+*::-webkit-scrollbar-thumb
+  background: rgba(109, 92, 246, 0.4)
+  border-radius: 999px
+  border: 2px solid transparent
+  background-clip: content-box
+
+*::-webkit-scrollbar-track
+  background: transparent
+
+@media (prefers-reduced-motion: reduce)
+  html
+    scroll-behavior: auto
+
+  .btn
+    transition: none
