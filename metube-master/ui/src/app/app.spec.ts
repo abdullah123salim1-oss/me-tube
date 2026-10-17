@@ -316,6 +316,81 @@ describe('App', () => {
     expect(payload.ytdlOptionsOverrides).toBe('');
   });
 
+  describe('format picker downloads carry the exact selector', () => {
+    it('buildAddPayload forwards ytdlFormat', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      expect(app['buildAddPayload']({ ytdlFormat: '137+bestaudio/137' }).ytdlFormat).toBe(
+        '137+bestaudio/137',
+      );
+      expect(app['buildAddPayload']().ytdlFormat).toBe('');
+    });
+
+    it('addProbeDownload maps an audio row and sends its selector', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const addSpy = vi.spyOn(downloads, 'add');
+      app.addUrl = 'https://example.com/v';
+      app.probeResult = {
+        status: 'ok',
+        url: 'https://example.com/v',
+        title: 'T',
+        music: [],
+        video: [],
+      };
+      app.addProbeDownload({
+        id: '140',
+        kind: 'audio',
+        badge: 'MP3',
+        label: '128KBPS',
+        filesize: 3600000,
+        fast: true,
+        selector: '140',
+        ext: 'm4a',
+        abr: 128,
+      });
+      expect(addSpy).toHaveBeenCalledTimes(1);
+      const payload = addSpy.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload['url']).toBe('https://example.com/v');
+      expect(payload['downloadType']).toBe('audio');
+      expect(payload['format']).toBe('mp3');
+      expect(payload['quality']).toBe('128');
+      expect(payload['ytdlFormat']).toBe('140');
+    });
+
+    it('addProbeDownload maps a video row and keeps the form settings', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const addSpy = vi.spyOn(downloads, 'add');
+      app.addUrl = 'https://example.com/v';
+      app.folder = 'music';
+      app.probeResult = {
+        status: 'ok',
+        url: 'https://example.com/v',
+        title: 'T',
+        music: [],
+        video: [],
+      };
+      app.addProbeDownload({
+        id: '137',
+        kind: 'video',
+        badge: 'MP4',
+        label: '1080P',
+        filesize: 80000000,
+        fast: false,
+        selector: '137+bestaudio/137',
+        ext: 'mp4',
+        height: 1080,
+      });
+      const payload = addSpy.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload['downloadType']).toBe('video');
+      expect(payload['format']).toBe('mp4');
+      expect(payload['quality']).toBe('1080');
+      expect(payload['folder']).toBe('music');
+      expect(payload['ytdlFormat']).toBe('137+bestaudio/137');
+    });
+  });
+
   describe('browse a playlist and queue picked entries (#1030)', () => {
     const setup = (result: Promise<string[]>) => {
       const fixture = TestBed.createComponent(App);
