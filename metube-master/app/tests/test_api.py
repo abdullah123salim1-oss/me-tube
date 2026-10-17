@@ -140,6 +140,105 @@ async def test_subscribe_does_not_forward_video_password(mock_dqueue, monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_add_passes_ytdl_format(mock_dqueue):
+    req = _json_request(_valid_video_add_body(ytdl_format="137+bestaudio/137"))
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call is not None
+    assert call.kwargs["ytdl_format"] == "137+bestaudio/137"
+
+
+@pytest.mark.asyncio
+async def test_add_without_ytdl_format_passes_empty(mock_dqueue):
+    req = _json_request(_valid_video_add_body())
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call is not None
+    assert call.kwargs["ytdl_format"] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "bestvideo[height<=720]",
+        "18;os.system('x')",
+        "18 19",
+        "18/19/20/21/22",
+        "18++19",
+        "18//19",
+        "x" * 400,
+    ],
+)
+async def test_add_rejects_unsafe_ytdl_format(mock_dqueue, bad):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(_json_request(_valid_video_add_body(ytdl_format=bad)))
+    mock_dqueue.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rejects_ytdl_format(mock_dqueue, monkeypatch):
+    # Exact-format picks are one-off downloads: future uploads of a subscription
+    # carry different format IDs.
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request(
+        {
+            **_valid_video_add_body(ytdl_format="18"),
+            "check_interval_minutes": 60,
+        }
+    )
+    with pytest.raises(web.HTTPBadRequest):
+        await main.subscribe(req)
+    main.submgr.add_subscription.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_probe_ok(mock_dqueue, monkeypatch):
+    fake = AsyncMock(
+        return_value={
+            "status": "ok",
+            "url": "https://example.com/watch?v=1",
+            "title": "T",
+            "thumbnail": "https://img/x.jpg",
+            "duration": 595.0,
+            "music": [
+                {
+                    "id": "140", "kind": "audio", "badge": "MP3", "label": "128KBPS",
+                    "filesize": 3600000, "fast": True, "selector": "140", "ext": "m4a", "abr": 128.0,
+                }
+            ],
+            "video": [
+                {
+                    "id": "18", "kind": "video", "badge": "MP4", "label": "360P",
+                    "filesize": 44000000, "fast": True, "selector": "18", "ext": "mp4", "height": 360,
+                }
+            ],
+        }
+    )
+    monkeypatch.setattr(main, "probe_video_formats", fake)
+    req = _json_request({"url": "https://example.com/watch?v=1"})
+    resp = await main.probe(req)
+    assert resp.status == 200
+    data = json.loads(resp.text)
+    assert data["status"] == "ok"
+    assert data["music"][0]["selector"] == "140"
+    assert data["video"][0]["label"] == "360P"
+    fake.assert_awaited_once()
+    assert fake.await_args.args[1] == "https://example.com/watch?v=1"
+
+
+@pytest.mark.asyncio
+async def test_probe_missing_url_returns_400(mock_dqueue, monkeypatch):
+    fake = AsyncMock(return_value={"status": "error", "msg": "x"})
+    monkeypatch.setattr(main, "probe_video_formats", fake)
+    with pytest.raises(web.HTTPBadRequest):
+        await main.probe(_json_request({}))
+    fake.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_add_legacy_string_preset_normalized(mock_dqueue, monkeypatch):
     monkeypatch.setattr(main.config, "YTDL_OPTIONS_PRESETS", {"Legacy": {}})
     body = _valid_video_add_body()

@@ -10,6 +10,7 @@ from app.dl_formats import (
     _normalize_subtitle_language,
     get_format,
     get_opts,
+    is_safe_ytdl_format,
     merge_ytdl_option_layers,
 )
 
@@ -273,3 +274,29 @@ class AutoAudioMappingTests(unittest.TestCase):
         self.assertEqual(self._target("with_cover", "wav"), "flac")
         self.assertEqual(self._target("with_cover", "aiff"), "flac")
         self.assertEqual(self._target("with_cover", "wma"), "mp3")
+
+
+class SafeYtdlFormatTests(unittest.TestCase):
+    """ytdl_format must stay plain format IDs: no yt-dlp expression syntax."""
+
+    def test_accepts_plain_ids_merges_and_fallbacks(self):
+        for sel in ("18", "251", "hls-720", "137+bestaudio/137", "18/19", "a+b/c+d/e", "sb0"):
+            with self.subTest(sel=sel):
+                self.assertTrue(is_safe_ytdl_format(sel))
+
+    def test_rejects_expressions_and_junk(self):
+        for sel in (
+            "",
+            " ",
+            "bestvideo[height<=720]",
+            "18;os.system('x')",
+            "18 19",
+            "18++19",
+            "18//19",
+            "/18",
+            "18/",
+            "18/19/20/21/22",
+            "x" * 400,
+        ):
+            with self.subTest(sel=sel):
+                self.assertFalse(is_safe_ytdl_format(sel))

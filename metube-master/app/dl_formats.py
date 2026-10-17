@@ -1,6 +1,7 @@
 """Maps the options in format_catalog onto yt-dlp format selectors and options."""
 
 import copy
+import re
 
 import format_catalog
 
@@ -44,6 +45,20 @@ CODEC_FILTER_MAP = {
     'av1':  "[vcodec~='^av0?1']",
     'vp9':  "[vcodec~='^vp0?9']",
 }
+
+# A per-item exact format override ("ytdl_format"): only plain yt-dlp format
+# IDs joined by + (merge) and / (fallbacks) — e.g. "18", "137+bestaudio/137".
+# No brackets, quotes or operators, so nothing that could turn into a yt-dlp
+# format expression. The format picker generates these from probed formats.
+_SAFE_YTDL_FORMAT_RE = re.compile(
+    r"^[A-Za-z0-9_.-]{1,64}(\+[A-Za-z0-9_.-]{1,64})?"
+    r"(/[A-Za-z0-9_.-]{1,64}(\+[A-Za-z0-9_.-]{1,64})?){0,3}$"
+)
+
+
+def is_safe_ytdl_format(value: str) -> bool:
+    """True when value is a plain format-ID selector acceptable as ytdl_format."""
+    return bool(value) and len(value) <= 300 and bool(_SAFE_YTDL_FORMAT_RE.fullmatch(value))
 
 
 def _normalize_caption_mode(mode: str) -> str:

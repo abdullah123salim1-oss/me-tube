@@ -22,6 +22,8 @@ from watchfiles import DefaultFilter, Change, awatch
 
 import bg_tasks
 import format_catalog
+from dl_formats import is_safe_ytdl_format
+from format_probe import probe_video_formats
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, browse_playlist, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -912,6 +914,16 @@ def parse_download_options(post: dict) -> dict:
     if video_password is not None and not isinstance(video_password, str):
         raise web.HTTPBadRequest(reason='video_password must be a string')
 
+    # Optional exact format override from the format picker: plain yt-dlp
+    # format IDs only (see dl_formats.is_safe_ytdl_format). Empty/absent means
+    # the catalog's type/format/quality selection builds the selector instead.
+    ytdl_format = post.get('ytdl_format')
+    if ytdl_format is None:
+        ytdl_format = ''
+    ytdl_format = str(ytdl_format).strip()
+    if ytdl_format and not is_safe_ytdl_format(ytdl_format):
+        raise web.HTTPBadRequest(reason='ytdl_format is not a valid format selector')
+
     _require_configured_presets(ytdl_options_presets)
 
     try:
@@ -981,6 +993,7 @@ def parse_download_options(post: dict) -> dict:
         'clip_start': clip_start,
         'clip_end': clip_end,
         'video_password': video_password,
+        'ytdl_format': ytdl_format,
     }
 
 
@@ -1022,6 +1035,7 @@ async def add(request):
         sponsorblock=o['sponsorblock'],
         audio_tags=o['audio_tags'],
         video_password=o['video_password'],
+        ytdl_format=o['ytdl_format'],
     )
     return web.Response(text=serializer.encode(status))
 
@@ -1061,6 +1075,24 @@ async def browse(request):
     return web.Response(text=serializer.encode(status))
 
 
+@routes.post(config.URL_PREFIX + 'probe')
+async def probe(request):
+    """List a single video's downloadable formats for the picker; queues nothing."""
+    post = await _read_json_request(request)
+    url = str(post.get('url') or '').strip()
+    if not url:
+        raise web.HTTPBadRequest(reason="missing 'url'")
+    ytdl_options_presets = _parse_ytdl_options_presets(post)
+    _require_configured_presets(ytdl_options_presets)
+    ytdl_options_overrides = _parse_ytdl_options_overrides(
+        post.get('ytdl_options_overrides'),
+        enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
+    )
+    log.info("Received request to probe formats")
+    status = await probe_video_formats(config, url, ytdl_options_presets, ytdl_options_overrides)
+    return web.Response(text=serializer.encode(status), content_type='application/json')
+
+
 @routes.get(config.URL_PREFIX + 'presets')
 async def presets(request):
     return web.Response(
@@ -1089,6 +1121,10 @@ async def retry(request):
 async def subscribe(request):
     post = await _read_json_request(request)
     o = parse_download_options(post)
+    if o.get('ytdl_format'):
+        # Exact-format picks are a one-off download feature: a subscription
+        # re-queues future uploads whose format IDs won't match.
+        raise web.HTTPBadRequest(reason='ytdl_format is not supported for subscriptions')
     cic = post.get('check_interval_minutes')
     if cic is None:
         cic = config.SUBSCRIPTION_DEFAULT_CHECK_INTERVAL

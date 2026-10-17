@@ -438,6 +438,177 @@ button:hover
     font-size: 0.78rem
     font-weight: 600
 
+// ---------------------------------------------------------------------------
+// Format picker (probed formats, downloader-site style)
+// ---------------------------------------------------------------------------
+
+.metube-probe-body
+  position: relative
+  padding: 1.5rem
+
+.metube-probe-close
+  position: absolute
+  top: 0.9rem
+  right: 0.9rem
+  z-index: 2
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 2.15rem
+  height: 2.15rem
+  border: 0
+  border-radius: 999px
+  background: var(--mt-surface-2)
+  color: var(--mt-muted)
+
+  &:hover
+    background: var(--mt-brand-soft)
+    color: var(--mt-brand)
+
+.metube-probe-media
+  display: flex
+  flex-direction: column
+  gap: 0.85rem
+
+.metube-probe-thumb
+  width: 100%
+  aspect-ratio: 16 / 9
+  object-fit: cover
+  border-radius: var(--mt-radius-md)
+  border: 1px solid var(--mt-line)
+  background: var(--mt-surface-2)
+
+.metube-probe-thumb-empty
+  display: flex
+  align-items: center
+  justify-content: center
+  font-size: 2.25rem
+  color: var(--mt-muted)
+  opacity: 0.5
+
+.metube-probe-title
+  font-weight: 700
+  font-size: 1.02rem
+  line-height: 1.45
+  color: var(--mt-ink)
+  word-break: break-word
+
+.metube-probe-duration
+  display: inline-flex
+  align-items: center
+  gap: 0.45rem
+  align-self: flex-start
+  padding: 0.32rem 0.85rem
+  border-radius: 0.65rem
+  background: rgba(34, 197, 94, 0.15)
+  border: 1px solid rgba(34, 197, 94, 0.4)
+  color: #16a34a
+  font-weight: 700
+  font-variant-numeric: tabular-nums
+
+.metube-probe-group-title
+  display: flex
+  align-items: center
+  gap: 0.55rem
+  margin: 0.35rem 0
+  padding: 0.55rem 0
+  font-size: 1.12rem
+  font-weight: 700
+  color: var(--mt-ink)
+  border-bottom: 1px solid var(--mt-line)
+
+  fa-icon
+    color: #16a34a
+
+  &:first-child
+    margin-top: 0
+
+.metube-probe-row
+  display: flex
+  align-items: center
+  gap: 1rem
+  padding: 0.85rem 0.25rem
+  border-bottom: 1px solid var(--mt-line)
+
+  &:last-child
+    border-bottom: 0
+
+.metube-format-badge
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 3.15rem
+  padding: 0.28rem 0.65rem
+  border-radius: 0.55rem
+  background: linear-gradient(135deg, #fdb022, #f79009)
+  color: #fff
+  font-size: 0.82rem
+  font-weight: 800
+  letter-spacing: 0.03em
+
+.metube-probe-label
+  min-width: 5.75rem
+  font-weight: 700
+  font-variant-numeric: tabular-nums
+  color: var(--mt-ink)
+
+.metube-probe-size
+  margin-right: auto
+  color: var(--mt-muted)
+  font-variant-numeric: tabular-nums
+  font-weight: 600
+
+.metube-dl-btn
+  position: relative
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  gap: 0.5rem
+  min-width: 10.25rem
+  padding: 0.55rem 1.15rem
+  border: 2px solid #22c55e
+  border-radius: 0.75rem
+  background: var(--mt-surface)
+  color: #16a34a
+  font-weight: 700
+
+  &:hover, &:focus-visible
+    background: rgba(34, 197, 94, 0.12)
+    border-color: #16a34a
+    color: #15803d
+
+  &:disabled
+    opacity: 0.7
+
+.metube-fast-ribbon
+  position: absolute
+  top: -0.55rem
+  right: -0.35rem
+  display: inline-flex
+  align-items: center
+  gap: 0.22rem
+  padding: 0.1rem 0.5rem
+  border-radius: 999px
+  background: #22c55e
+  color: #fff
+  font-size: 0.62rem
+  font-weight: 800
+  letter-spacing: 0.05em
+  text-transform: uppercase
+  box-shadow: 0 4px 10px rgba(34, 197, 94, 0.45)
+
+@media (max-width: 767.98px)
+  .metube-probe-row
+    flex-wrap: wrap
+    gap: 0.55rem 0.75rem
+
+  .metube-probe-size
+    margin-right: 0
+
+  .metube-dl-btn
+    width: 100%
+    min-width: 0
+
 // Advanced options toggle
 .metube-advanced-toggle
   font-weight: 600

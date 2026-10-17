@@ -140,6 +140,48 @@ describe('DownloadsService', () => {
     req.flush({ status: 'ok' });
   });
 
+  it('add() sends ytdl_format when a picker format is set', () => {
+    service.add({ ...basePayload(), ytdlFormat: '137+bestaudio/137' }).subscribe();
+    const req = httpMock.expectOne('add');
+    expect(req.request.body).toEqual(
+      expect.objectContaining({
+        ytdl_format: '137+bestaudio/137',
+      }),
+    );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() omits ytdl_format when empty or unset', () => {
+    service.add(basePayload()).subscribe();
+    let req = httpMock.expectOne('add');
+    expect(req.request.body).not.toHaveProperty('ytdl_format');
+    req.flush({ status: 'ok' });
+
+    service.add({ ...basePayload(), ytdlFormat: '' }).subscribe();
+    req = httpMock.expectOne('add');
+    expect(req.request.body).not.toHaveProperty('ytdl_format');
+    req.flush({ status: 'ok' });
+  });
+
+  it('probe() posts the url and options to the probe endpoint', () => {
+    service
+      .probe({
+        url: 'https://example.com/v',
+        playlistItemLimit: 0,
+        ytdlOptionsPresets: [],
+        ytdlOptionsOverrides: '',
+      })
+      .subscribe();
+    const req = httpMock.expectOne('probe');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      url: 'https://example.com/v',
+      ytdl_options_presets: [],
+      ytdl_options_overrides: '',
+    });
+    req.flush({ status: 'ok', music: [], video: [] });
+  });
+
   it('keeps the format catalog the server sends on connect', () => {
     const seen: unknown[] = [];
     service.formatsChanged.subscribe(c => seen.push(c));

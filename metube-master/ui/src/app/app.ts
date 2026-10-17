@@ -1,16 +1,16 @@
 import { DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, takeUntil, tap } from 'rxjs';
+import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, switchMap, takeUntil, tap, EMPTY } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModal, NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes, faMusic, faBolt } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
+import { AddDownloadPayload, DownloadsService, ProbeFormat, ProbeResult } from './services/downloads.service';
 import { MeTubeSocket } from './services/metube-socket.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
@@ -104,6 +104,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   addInProgress = false;
   cancelRequested = false;
   subscribeInProgress = false;
+  // Format picker (probe): auto-appears when a video URL is in the box,
+  // listing the site's real formats with sizes like the one-shot downloaders.
+  probeState: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  probeResult: ProbeResult | null = null;
+  probeErrorMsg = '';
+  probeAddingId: string | null = null;
+  private probeInput$ = new Subject<string>();
   checkIntervalMinutes = 60;
   titleRegex = '';
   skipSubscriberOnly = false;
@@ -211,6 +218,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faPause = faPause;
   faPlay = faPlay;
   faShareNodes = faShareNodes;
+  faMusic = faMusic;
+  faBolt = faBolt;
   constructor() {
     // Remembered choices are checked against the catalog when it arrives.
     this.downloadType = this.cookieService.get('metube_download_type');
@@ -280,6 +289,41 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.getYtdlOptionsUpdateTime();
     this.getYtdlOptionPresets();
     this.setTheme(this.activeTheme!);
+
+    // Auto-probe pasted URLs for the format picker. A playlist/channel result
+    // stays hidden: the regular Download / Browse flows handle those.
+    this.probeInput$.pipe(
+      debounceTime(700),
+      distinctUntilChanged(),
+      switchMap((url) => {
+        if (!url) {
+          this.resetProbe();
+          return EMPTY;
+        }
+        this.probeState = 'loading';
+        this.probeErrorMsg = '';
+        this.probeResult = null;
+        this.cdr.markForCheck();
+        return this.downloads.probe({
+          url,
+          playlistItemLimit: this.playlistItemLimit,
+          ytdlOptionsPresets: [...this.ytdlOptionsPresets],
+          ytdlOptionsOverrides: this.allowYtdlOptionsOverrides() ? this.ytdlOptionsOverrides : '',
+        });
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((res) => {
+      if (res.status === 'ok') {
+        this.probeResult = res;
+        this.probeState = 'ready';
+      } else if (res.status === 'playlist') {
+        this.resetProbe();
+      } else {
+        this.probeState = 'error';
+        this.probeErrorMsg = res.msg || 'Could not fetch formats';
+      }
+      this.cdr.markForCheck();
+    });
 
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
   }
@@ -1162,8 +1206,90 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         }
         this.addUrl = '';
         this.videoPassword = '';
+        // Programmatic clears don't fire ngModelChange; drop the picker too.
+        this.resetProbe();
       }
       this.resetAddState();
+    });
+  }
+
+  // --- Format picker (probe) ------------------------------------------------
+
+  onUrlInput(value: string) {
+    const url = (value ?? '').trim();
+    this.probeInput$.next(/^https?:\/\//i.test(url) ? url : '');
+  }
+
+  resetProbe() {
+    this.probeState = 'idle';
+    this.probeResult = null;
+    this.probeErrorMsg = '';
+    this.probeAddingId = null;
+    this.cdr.markForCheck();
+  }
+
+  formatProbeDuration(seconds?: number | null): string {
+    if (!seconds || seconds <= 0) {
+      return '';
+    }
+    const total = Math.round(seconds);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  }
+
+  // The catalog fields that mirror a picker row (its container and a quality
+  // tier the row sits in). The row's exact selector still decides the stream;
+  // these keep the queue's Type/Format/Quality columns readable.
+  private probeCatalogFields(row: ProbeFormat): Partial<AddDownloadPayload> {
+    if (row.kind === 'audio') {
+      const abr = row.abr ? Math.round(row.abr) : 0;
+      const quality = ['320', '192', '128'].includes(String(abr)) ? String(abr) : 'best';
+      return { downloadType: 'audio', codec: 'auto', format: 'mp3', quality };
+    }
+    const height = row.height ? String(row.height) : '';
+    const qualityTier = ['2160', '1440', '1080', '720', '480', '360', '240'].includes(height)
+      ? height
+      : 'best';
+    return {
+      downloadType: 'video',
+      codec: 'auto',
+      format: ['mp4', 'm4v', 'mov'].includes(row.ext) ? 'mp4' : 'any',
+      quality: qualityTier,
+    };
+  }
+
+  addProbeDownload(row: ProbeFormat) {
+    const url = (this.probeResult?.url || this.addUrl || '').trim();
+    if (!url || this.probeAddingId) {
+      return;
+    }
+    const payload = this.buildAddPayload({
+      url,
+      ...this.probeCatalogFields(row),
+      ytdlFormat: row.selector,
+    });
+    if (!this.validateAddSettings(payload)) {
+      return;
+    }
+    this.probeAddingId = row.id;
+    this.cdr.markForCheck();
+    // Deliberately keeps addUrl and the picker open: the same video can be
+    // saved in several formats without re-pasting.
+    this.downloads.add(payload).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((status: Status) => {
+      this.probeAddingId = null;
+      if (status.status === 'error') {
+        this.toasts.error(`Error adding URL: ${status.msg}`);
+      } else {
+        this.toasts.success(`Queued ${row.badge} ${row.label}`);
+        if (status.msg) {
+          this.toasts.info(status.msg);
+        }
+      }
+      this.cdr.markForCheck();
     });
   }
 

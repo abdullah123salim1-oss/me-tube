@@ -22,7 +22,7 @@ import yt_dlp.networking.impersonate
 from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 import bg_tasks
-from dl_formats import get_format, get_opts, merge_ytdl_option_layers
+from dl_formats import get_format, get_opts, is_safe_ytdl_format, merge_ytdl_option_layers
 import format_catalog
 from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
@@ -522,6 +522,7 @@ class DownloadInfo:
         sponsorblock=False,
         audio_tags='with_cover',
         video_password=None,
+        ytdl_format=None,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -550,6 +551,10 @@ class DownloadInfo:
         self.sponsorblock = sponsorblock
         self.audio_tags = audio_tags
         self.video_password = video_password
+        # Exact yt-dlp format selector picked in the format picker ("18",
+        # "137+bestaudio/137"); empty/None means the catalog selection in
+        # quality/download_type/codec/format builds the selector instead.
+        self.ytdl_format = (ytdl_format or '').strip() or None
         self.chapter_template = chapter_template
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
@@ -643,6 +648,8 @@ class DownloadInfo:
                 self.ytdl_options_presets = []
         if not hasattr(self, "ytdl_options_overrides"):
             self.ytdl_options_overrides = {}
+        if not hasattr(self, "ytdl_format"):
+            self.ytdl_format = None
         if not hasattr(self, "entry"):
             self.entry = None
         if not hasattr(self, "subtitle_files"):
@@ -671,6 +678,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "download_type",
     "codec",
     "format",
+    "ytdl_format",
     "folder",
     "custom_name_prefix",
     "playlist_item_limit",
@@ -774,7 +782,11 @@ class Download:
         self.output_template_chapter = output_template_chapter
         self.allow_private = allow_private
         self.info = info
-        self.format = get_format(
+        # An exact format picker choice ("18", "137+bestaudio/137") wins over
+        # the selector the catalog options would build. Old persisted records
+        # without the field fall back to the catalog selector.
+        exact = (getattr(info, 'ytdl_format', None) or '').strip()
+        self.format = exact if is_safe_ytdl_format(exact) else get_format(
             getattr(info, 'download_type', 'video'),
             getattr(info, 'codec', 'auto'),
             format,
@@ -1862,6 +1874,7 @@ class DownloadQueue:
         sponsorblock=False,
         audio_tags='with_cover',
         video_password=None,
+        ytdl_format=None,
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -1908,6 +1921,7 @@ class DownloadQueue:
                 sponsorblock=sponsorblock,
                 audio_tags=audio_tags,
                 video_password=video_password,
+                ytdl_format=ytdl_format,
             )
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
@@ -2023,6 +2037,7 @@ class DownloadQueue:
                 sponsorblock=sponsorblock,
                 audio_tags=audio_tags,
                 video_password=video_password,
+                ytdl_format=ytdl_format,
             )
             error = await self.__add_download(dl, auto_start)
             if error is not None:
@@ -2052,6 +2067,7 @@ class DownloadQueue:
         clip_start,
         clip_end,
         entry=None,
+        ytdl_format=None,
     ):
         """Surface a URL that failed before a DownloadInfo could be created (unsupported
         URL, SSRF-rejected, extraction error) as a failed entry in the done list, so the
@@ -2078,6 +2094,7 @@ class DownloadQueue:
             ytdl_options_overrides=ytdl_options_overrides,
             clip_start=clip_start,
             clip_end=clip_end,
+            ytdl_format=ytdl_format,
         )
         info.status = 'error'
         info.msg = msg
@@ -2110,6 +2127,7 @@ class DownloadQueue:
         sponsorblock=False,
         audio_tags='with_cover',
         video_password=None,
+        ytdl_format=None,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
@@ -2145,7 +2163,7 @@ class DownloadQueue:
                 url, url_error, download_type, codec, format, quality, folder,
                 custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
-                clip_start, clip_end, retry_entry,
+                clip_start, clip_end, retry_entry, ytdl_format=ytdl_format,
             )
             return {'status': 'error', 'msg': url_error}
         extract_logger = _ExtractYtdlLogger()
@@ -2161,7 +2179,7 @@ class DownloadQueue:
                 url, msg, download_type, codec, format, quality, folder,
                 custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
-                clip_start, clip_end, retry_entry,
+                clip_start, clip_end, retry_entry, ytdl_format=ytdl_format,
             )
             return {'status': 'error', 'msg': msg}
         if entry is None:
@@ -2196,6 +2214,7 @@ class DownloadQueue:
             sponsorblock=sponsorblock,
             audio_tags=audio_tags,
             video_password=video_password,
+            ytdl_format=ytdl_format,
         )
 
     async def retry(self, id):
@@ -2235,6 +2254,7 @@ class DownloadQueue:
             sponsorblock=info.sponsorblock,
             audio_tags=info.audio_tags,
             video_password=getattr(info, 'video_password', None),
+            ytdl_format=getattr(info, 'ytdl_format', None),
         )
 
     async def add_entry(

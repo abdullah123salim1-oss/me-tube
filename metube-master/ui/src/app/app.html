@@ -177,6 +177,7 @@
               class="form-control form-control-lg metube-url-field"
               placeholder="Paste a video, channel, or playlist URL"
               [(ngModel)]="addUrl"
+              (ngModelChange)="onUrlInput($event)"
               [ngModelOptions]="{standalone: true}"
               [disabled]="addInProgress || subscribeInProgress || downloads.loading">
             <div class="btn-group w-100 metube-url-stack" role="group" aria-label="Download or subscribe">
@@ -192,6 +193,7 @@
               class="form-control form-control-lg"
               placeholder="Paste a video, channel, or playlist URL"
               [(ngModel)]="addUrl"
+              (ngModelChange)="onUrlInput($event)"
               [ngModelOptions]="{standalone: true}"
               [disabled]="addInProgress || subscribeInProgress || downloads.loading">
             <ng-container [ngTemplateOutlet]="urlBarActions" />
@@ -689,6 +691,124 @@
     </div>
   </div>
 
+
+  <!-- Format picker: the URL's real formats, probed from the site -->
+  @if (probeState !== 'idle') {
+    <section class="metube-panel metube-probe">
+      <div class="metube-probe-body">
+        <button type="button" class="metube-probe-close" (click)="resetProbe()" aria-label="Hide formats">
+          <fa-icon [icon]="faTimesCircle" />
+        </button>
+        @if (probeState === 'loading') {
+          <div class="metube-empty">
+            <span class="spinner-border text-primary" role="status"></span>
+            <p>Fetching formats&hellip;</p>
+          </div>
+        } @else if (probeState === 'error') {
+          <div class="metube-empty">
+            <fa-icon [icon]="faTimesCircle" class="metube-empty-icon" />
+            <p>{{ probeErrorMsg }}</p>
+          </div>
+        } @else {
+          <div class="row g-4">
+            <div class="col-md-4">
+              <div class="metube-probe-media">
+                @if (probeResult?.thumbnail) {
+                  <img class="metube-probe-thumb"
+                    [src]="probeResult!.thumbnail!"
+                    [alt]="probeResult?.title || 'Video thumbnail'"
+                    referrerpolicy="no-referrer" />
+                } @else {
+                  <div class="metube-probe-thumb metube-probe-thumb-empty">
+                    <fa-icon [icon]="faDownload" />
+                  </div>
+                }
+                @if (probeResult?.title) {
+                  <div class="metube-probe-title">{{ probeResult?.title }}</div>
+                }
+                @if (formatProbeDuration(probeResult?.duration); as dur) {
+                  <div class="metube-probe-duration">
+                    <fa-icon [icon]="faClock" />
+                    {{ dur }}
+                  </div>
+                }
+              </div>
+            </div>
+            <div class="col-md-8">
+              @if (probeResult?.music?.length) {
+                <div class="metube-probe-group-title">
+                  <fa-icon [icon]="faMusic" />
+                  <span>Music</span>
+                </div>
+                @for (row of probeResult?.music; track row.id) {
+                  <div class="metube-probe-row">
+                    <span class="metube-format-badge">{{ row.badge }}</span>
+                    <span class="metube-probe-label">{{ row.label }}</span>
+                    <span class="metube-probe-size">
+                      @if (row.filesize) {
+                        {{ row.filesize | fileSize }}
+                      } @else {
+                        &mdash;
+                      }
+                    </span>
+                    <button type="button"
+                      class="metube-dl-btn"
+                      (click)="addProbeDownload(row)"
+                      [disabled]="probeAddingId !== null"
+                      [attr.aria-label]="'Download ' + row.badge + ' ' + row.label">
+                      @if (probeAddingId === row.id) {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                      } @else {
+                        <fa-icon [icon]="faDownload" />
+                        <span>Download</span>
+                      }
+                      @if (row.fast && probeAddingId !== row.id) {
+                        <span class="metube-fast-ribbon"><fa-icon [icon]="faBolt" /> Fast</span>
+                      }
+                    </button>
+                  </div>
+                }
+              }
+              @if (probeResult?.video?.length) {
+                <div class="metube-probe-group-title">
+                  <fa-icon [icon]="faPlay" />
+                  <span>Video</span>
+                </div>
+                @for (row of probeResult?.video; track row.id) {
+                  <div class="metube-probe-row">
+                    <span class="metube-format-badge">{{ row.badge }}</span>
+                    <span class="metube-probe-label">{{ row.label }}</span>
+                    <span class="metube-probe-size">
+                      @if (row.filesize) {
+                        {{ row.filesize | fileSize }}
+                      } @else {
+                        &mdash;
+                      }
+                    </span>
+                    <button type="button"
+                      class="metube-dl-btn"
+                      (click)="addProbeDownload(row)"
+                      [disabled]="probeAddingId !== null"
+                      [attr.aria-label]="'Download ' + row.badge + ' ' + row.label">
+                      @if (probeAddingId === row.id) {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                      } @else {
+                        <fa-icon [icon]="faDownload" />
+                        <span>Download</span>
+                      }
+                      @if (row.fast && probeAddingId !== row.id) {
+                        <span class="metube-fast-ribbon"><fa-icon [icon]="faBolt" /> Fast</span>
+                      }
+                    </button>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+  }
 
   @if (downloads.loading) {
     <div class="alert alert-info" role="alert">

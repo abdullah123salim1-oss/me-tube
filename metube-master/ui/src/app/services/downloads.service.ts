@@ -27,6 +27,33 @@ export interface AddDownloadPayload {
   clipStart?: string;
   clipEnd?: string;
   videoPassword?: string;
+  // Exact yt-dlp format selector from the format picker (e.g. "18",
+  // "137+bestaudio/137"). Empty/absent = the catalog selection decides.
+  ytdlFormat?: string;
+}
+
+export interface ProbeFormat {
+  id: string;
+  kind: 'audio' | 'video';
+  badge: string;
+  label: string;
+  filesize: number | null;
+  fast: boolean;
+  selector: string;
+  ext: string;
+  abr?: number | null;
+  height?: number | null;
+}
+
+export interface ProbeResult {
+  status: string;
+  msg?: string;
+  url?: string;
+  title?: string;
+  thumbnail?: string | null;
+  duration?: number | null;
+  music?: ProbeFormat[];
+  video?: ProbeFormat[];
 }
 
 export interface BrowsePayload {
@@ -193,7 +220,18 @@ export class DownloadsService {
     if (cs) body['clip_start'] = cs;
     if (ce) body['clip_end'] = ce;
     if (payload.videoPassword) body['video_password'] = payload.videoPassword;
+    if (payload.ytdlFormat?.trim()) body['ytdl_format'] = payload.ytdlFormat.trim();
     return this.http.post<Status>('add', body).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  public probe(payload: BrowsePayload): Observable<ProbeResult> {
+    return this.http.post<ProbeResult>('probe', {
+      url: payload.url,
+      ytdl_options_presets: payload.ytdlOptionsPresets,
+      ytdl_options_overrides: payload.ytdlOptionsOverrides,
+    }).pipe(
       catchError(this.handleHTTPError)
     );
   }
