@@ -33,6 +33,7 @@ import os
 import re
 import shutil
 import time
+from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote, unquote
 
@@ -40,6 +41,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.background import BackgroundTask
+from starlette.staticfiles import StaticFiles
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger("metube")
@@ -1281,11 +1283,38 @@ def _stream_from_source(info: dict):
     )
 
 
+def _serve_ui(rel: str):
+    """Serve a static UI file from api/ui (fallback when the request
+    reaches the function instead of the CDN). SPA paths resolve to
+    index.html; anything missing under /api stays a JSON 404."""
+    rel = rel.lstrip("/")
+    if rel.startswith(("api/", "file/")):
+        return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
+    candidate = (UI_DIR / rel).resolve()
+    if rel and not str(candidate).startswith(str(UI_DIR.resolve())):
+        return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
+    if candidate.is_file():
+        mt = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
+        return FileResponse(candidate, media_type=mt)
+    # Extension-less paths are SPA routes -> index.html; unknown assets 404.
+    if "." not in Path(rel).name:
+        index = UI_DIR / "index.html"
+        if index.is_file():
+            return FileResponse(index, media_type="text/html")
+    return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
+
+
 # ---------------------------------------------------------------------------
 # ASGI routing (tolerates the several shapes Vercel can hand us)
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="MeTube (Vercel + Supabase)")
+
+# The built Angular UI, copied here by the Vercel buildCommand. It is mounted
+# as StaticFiles so Vercel's FastAPI adapter can hoist it onto the CDN, and is
+# also served by hand in dispatch() whenever a page request reaches the
+# function (/, SPA deep links, asset misses).
+UI_DIR = Path(__file__).resolve().parent / "ui"
 
 KNOWN_GET = {"formats", "presets", "history", "cookie-status", "version", "snapshot", "subscriptions", "tick", "health"}
 KNOWN_POST = {"add", "browse", "cancel-add", "retry", "start", "delete", "subscribe",
@@ -1312,6 +1341,16 @@ def resolve_path(request: Request):
         route = "/" + name + (f"/{rest}" if rest else "")
         if route[1:] in KNOWN_GET or route[1:] in KNOWN_POST:
             return ("route", route)
+
+    # Vercel maps each named capture in a rewrite source to a query key of
+    # the same name, so the keys below tell us which rewrite matched.
+    if qs.get("uipath") is not None:
+        return ("ui", "/" + unquote(qs.get("uipath") or "").strip("/"))
+    if qs.get("filepath") is not None:
+        fp = unquote(qs.get("filepath") or "")
+        return ("file", [fp, "file/" + fp])
+    if qs.get("apipath") is not None:
+        path_param = qs.get("apipath")
 
     if path_param is not None:
         pp = unquote(path_param)
@@ -1355,14 +1394,16 @@ def resolve_path(request: Request):
             return ("route", p)
         if route_rest.startswith("file/"):
             return ("file", [route_rest[len("file/"):]])
-        if route_rest == "" and stripped:
-            return ("route", "/health")
+        if stripped:
+            # Came through /api/... but is not an API route: 404 as JSON
+            # rather than handing an API miss to the UI.
+            return ("route", p if route_rest else "/health")
     if fallback.startswith("/") and fallback != "/":
         rest2 = fallback[1:]
         if rest2.startswith("file/"):
             return ("file", [rest2[len("file/"):]])
-        return ("route", fallback)
-    return ("route", "/health")
+        return ("ui", fallback)
+    return ("ui", "/")
 
 
 async def dispatch(request: Request):
@@ -1375,6 +1416,11 @@ async def dispatch(request: Request):
         if method not in ("GET", "HEAD"):
             return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
         return await asyncio.to_thread(handle_file, target)
+
+    if kind == "ui":
+        if method not in ("GET", "HEAD"):
+            return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
+        return _serve_ui(target)
 
     path = target
     rest = path[1:]
@@ -1459,3 +1505,10 @@ async def dispatch(request: Request):
 for _method in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"):
     app.add_api_route("/", dispatch, methods=[_method], include_in_schema=False)
     app.add_api_route("/{full_path:path}", dispatch, methods=[_method], include_in_schema=False)
+
+# Static mount for the Vercel FastAPI adapter: it scans app routes for
+# StaticFiles mounts and hoists the directory onto the CDN. Registered after
+# the catch-all on purpose — at runtime dispatch() serves the UI from the
+# function itself via _serve_ui, while the CDN handles the hot path.
+if UI_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(UI_DIR), html=True), name="ui")
