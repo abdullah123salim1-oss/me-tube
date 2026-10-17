@@ -1,18 +1,16 @@
 {
-  "installCommand": "cd metube-master/ui && npm install",
-  "buildCommand": "cd metube-master/ui && npm run build",
-  "outputDirectory": "metube-master/ui/dist/metube/browser",
+  "installCommand": "cd metube-master/ui && npm install && cd ../.. && (uv venv .vercel/python/.venv --python 3.12 || true) && uv pip install --python .vercel/python/.venv/bin/python -r requirements.txt && echo PYTHON_DEPS_INSTALLED",
+  "buildCommand": "cd metube-master/ui && npm run build && cd ../.. && rm -rf api/ui && cp -r metube-master/ui/dist/metube/browser api/ui && echo UI_COPIED_INTO_FUNCTION",
   "functions": {
     "api/index.py": {
-      "maxDuration": 300,
-      "memory": 1024
+      "maxDuration": 300
     }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api" },
-    { "source": "/file/:path*", "destination": "/api" },
+    { "source": "/api/:apipath*", "destination": "/api" },
+    { "source": "/file/:filepath*", "destination": "/api" },
     { "source": "/:name(add|browse|cancel-add|retry|start|delete|presets|formats|history|version|cookie-status|upload-cookies|delete-cookies|subscribe|subscriptions|snapshot|tick|health)", "destination": "/api" },
     { "source": "/:name(subscriptions)/:rest(update|delete|check)", "destination": "/api" },
-    { "source": "/((?!api/|file/|assets/|.*\\..*).*)", "destination": "/index.html" }
+    { "source": "/:uipath((?!api/|file/).*)", "destination": "/api" }
   ]
 }
