@@ -1,6 +1,6 @@
 {
-  "installCommand": "cd metube-master/ui && npm install -g pnpm@12.6.0 && pnpm install",
-  "buildCommand": "cd metube-master/ui && pnpm build",
+  "installCommand": "cd metube-master/ui && npm install",
+  "buildCommand": "cd metube-master/ui && npm run build",
   "outputDirectory": "metube-master/ui/dist/metube/browser",
   "functions": {
     "api/index.py": {

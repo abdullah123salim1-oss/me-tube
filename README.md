@@ -59,8 +59,8 @@ function limit) while streaming progress into Supabase.
 ## Local development
 
 ```bash
-# UI
-cd metube-master/ui && pnpm install && pnpm build      # or: pnpm start (dev server)
+# UI (npm or pnpm both work; Vercel uses npm)
+cd metube-master/ui && npm install && npm run build     # or: npm start (dev server)
 
 # API (needs SUPABASE_URL / SUPABASE_KEY in the environment)
 pip install -r requirements.txt
