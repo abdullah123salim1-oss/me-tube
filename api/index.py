@@ -34,7 +34,7 @@ import re
 import shutil
 import time
 from typing import Any, Optional
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 import httpx
 from fastapi import FastAPI, Request
@@ -1236,7 +1236,7 @@ def handle_file(rel_candidates):
         try:
             url = storage_sign(match["storage_path"])
             filename = os.path.basename(rels[0])
-            return RedirectResponse(f"{url}&download={filename}", status_code=302)
+            return RedirectResponse(f"{url}&download={quote(filename)}", status_code=302)
         except StoreError as exc:
             log.warning("sign failed: %s", exc)
 
