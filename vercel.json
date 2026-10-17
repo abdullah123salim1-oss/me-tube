@@ -1,0 +1,18 @@
+{
+  "installCommand": "cd metube-master/ui && npm install -g pnpm@12.6.0 && pnpm install",
+  "buildCommand": "cd metube-master/ui && pnpm build",
+  "outputDirectory": "metube-master/ui/dist/metube/browser",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 300,
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/file/:path*", "destination": "/api" },
+    { "source": "/:name(add|browse|cancel-add|retry|start|delete|presets|formats|history|version|cookie-status|upload-cookies|delete-cookies|subscribe|subscriptions|snapshot|tick|health)", "destination": "/api" },
+    { "source": "/:name(subscriptions)/:rest(update|delete|check)", "destination": "/api" },
+    { "source": "/((?!api/|file/|assets/|.*\\..*).*)", "destination": "/index.html" }
+  ]
+}
