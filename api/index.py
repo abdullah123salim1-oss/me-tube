@@ -805,8 +805,9 @@ def process_queue(time_budget: float = DOWNLOAD_TIME_BUDGET) -> dict:
 
 
 def _iso_epoch(iso: str) -> float:
+    import calendar
     try:
-        return time.mktime(time.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S"))
+        return calendar.timegm(time.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S"))
     except (ValueError, IndexError):
         return 0.0
 
@@ -1213,15 +1214,17 @@ def handle_subscriptions_check(post: dict) -> dict:
 
 # -- file serving -----------------------------------------------------------
 
-def handle_file(rel_path: str):
-    rel = unquote(rel_path).lstrip("/")
+def handle_file(rel_candidates):
+    if isinstance(rel_candidates, str):
+        rel_candidates = [rel_candidates]
+    rels = [unquote(rel).lstrip("/") for rel in rel_candidates if rel]
     match = None
     for state in ("done",):
         for row in fetch_items(state):
             info = row["info"]
-            if info.get("file_path") == rel or (
-                not info.get("file_path") and info.get("filename") == rel
-            ):
+            fp = info.get("file_path")
+            fn = info.get("filename")
+            if (fp and fp in rels) or (fn and fn in rels):
                 match = row
                 break
         if match:
@@ -1232,7 +1235,7 @@ def handle_file(rel_path: str):
     if match.get("storage_path"):
         try:
             url = storage_sign(match["storage_path"])
-            filename = os.path.basename(rel)
+            filename = os.path.basename(rels[0])
             return RedirectResponse(f"{url}&download={filename}", status_code=302)
         except StoreError as exc:
             log.warning("sign failed: %s", exc)
@@ -1292,7 +1295,37 @@ KNOWN_POST = {"add", "browse", "cancel-add", "retry", "start", "delete", "subscr
 _PATH_PREFIXES = ("/api/index.py", "/api/index", "/api")
 
 
-def resolve_path(request: Request) -> str:
+def resolve_path(request: Request):
+    """Return ('route', '/name') or ('file', [candidate rel paths]).
+
+    Vercel's compiled rewrites hand the matched pieces to the function as
+    query parameters (/add -> /api?name=add, /api/add -> /api?path=add,
+    /file/a/b.mp4 -> /api?path=a/b.mp4), so those are checked first; the
+    raw path and Vercel's original-path headers cover other setups.
+    """
+    qs = request.query_params
+    name = qs.get("name")
+    rest = qs.get("rest")
+    path_param = qs.get("path")
+
+    if name:
+        route = "/" + name + (f"/{rest}" if rest else "")
+        if route[1:] in KNOWN_GET or route[1:] in KNOWN_POST:
+            return ("route", route)
+
+    if path_param is not None:
+        pp = unquote(path_param)
+        if pp in KNOWN_GET or pp in KNOWN_POST:
+            return ("route", "/" + pp)
+        if pp == "":
+            return ("route", "/health")
+        # A bare subpath came through /file/:path*; one with a file/ prefix
+        # came through /api/:path*. Keep both readings so a folder actually
+        # named "file" still resolves.
+        if pp.startswith("file/"):
+            return ("file", [pp, pp[len("file/"):]])
+        return ("file", [pp])
+
     candidates = []
     for header in ("x-vercel-original-path", "x-invoke-path", "x-matched-path", "x-real-path"):
         value = request.headers.get(header)
@@ -1317,21 +1350,33 @@ def resolve_path(request: Request) -> str:
             p = "/" + p
         if p != "/":
             p = "/" + p.strip("/")
-        rest = p[1:]
-        if rest in KNOWN_GET or rest in KNOWN_POST:
-            return p
-        if rest.startswith("file/"):
-            return p
-        if rest == "" and stripped:
-            return "/health"
-    return fallback if fallback.startswith("/") else "/health"
+        route_rest = p[1:]
+        if route_rest in KNOWN_GET or route_rest in KNOWN_POST:
+            return ("route", p)
+        if route_rest.startswith("file/"):
+            return ("file", [route_rest[len("file/"):]])
+        if route_rest == "" and stripped:
+            return ("route", "/health")
+    if fallback.startswith("/") and fallback != "/":
+        rest2 = fallback[1:]
+        if rest2.startswith("file/"):
+            return ("file", [rest2[len("file/"):]])
+        return ("route", fallback)
+    return ("route", "/health")
 
 
 async def dispatch(request: Request):
     method = request.method.upper()
     if method == "OPTIONS":
         return Response(status_code=204)
-    path = resolve_path(request)
+    kind, target = resolve_path(request)
+
+    if kind == "file":
+        if method not in ("GET", "HEAD"):
+            return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
+        return await asyncio.to_thread(handle_file, target)
+
+    path = target
     rest = path[1:]
 
     if method == "GET" and rest == "health":
@@ -1362,11 +1407,7 @@ async def dispatch(request: Request):
     if method == "GET" and rest == "subscriptions":
         return JSONResponse(await asyncio.to_thread(handle_subscriptions_list))
 
-    if rest.startswith("file/") and method in ("GET", "HEAD"):
-        rel = path[len("/file/"):]
-        return await asyncio.to_thread(handle_file, rel)
-
-    if method == "GET" and rest == "tick":
+    if rest == "tick":
         return JSONResponse(await asyncio.to_thread(tick))
 
     if method != "POST":
