@@ -627,6 +627,21 @@
                       </button>
                     }
                   </div>
+                  <div class="proxy-actions">
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                      (click)="findFreeProxies()"
+                      [disabled]="proxyFinding || proxySaving || addInProgress">
+                      @if (proxyFinding) {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                      } @else {
+                        <fa-icon [icon]="faSearch" class="me-2" />
+                      }
+                      Find free proxies
+                    </button>
+                    @if (proxyFindNote) {
+                      <small class="proxy-note">{{ proxyFindNote }}</small>
+                    }
+                  </div>
                   <div class="cookie-status" [class.active]="hasProxy">
                     @if (hasProxy) {
                       <fa-icon [icon]="faCheckCircle" class="me-1" />

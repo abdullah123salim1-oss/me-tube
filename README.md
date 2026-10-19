@@ -87,6 +87,7 @@ that, updates apply themselves.
 | `YTDLP_PROXY` | Optional proxy used when none is saved in Settings, e.g. `socks5://user:pass@host:1080` (one or comma/newline separated list). `METUBE_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` are also honoured, in that order. |
 | `YTDLP_IMPERSONATE` | Optional browser TLS impersonation target for curl-cffi, e.g. `chrome`. Helps some extractors; leave unset if unsure. |
 | `YTDLP_PLAYER_CLIENTS` | Optional YouTube player-client strategy list, e.g. `default,tv;android_vr`. Overrides the built-in rotation. |
+| `PROXY_LIST_URLS` | Optional comma/newline separated proxy-list URLs used by "Find free proxies" instead of the built-in public lists. |
 
 ## Fixing "Sign in to confirm you're not a bot"
 
@@ -106,6 +107,14 @@ reliable one:
    back to the browser unmasked. When several are configured they are tried
    in order until one gets past the block. Use a residential/mobile proxy:
    free public proxies and other datacenter proxies are usually blocked too.
+
+   **No proxy to hand? Press "Find free proxies".** The server downloads
+   public proxy lists, probes each candidate with a real yt-dlp extraction
+   against a YouTube-owned test video, and saves up to six that actually get
+   past the bot check (about 1–2 minutes; `POST /auto-proxy`). Free proxies
+   are unreliable and often already blocked, so expect this to fail sometimes
+   — but when it finds one, downloads work with no account or payment. Point
+   `PROXY_LIST_URLS` at your own list to use other sources.
 2. **Automatic player-client rotation (tried first).** Before you even need
    a proxy, a blocked YouTube request is retried through yt-dlp's other
    Innertube clients (`default + tv`, `android_vr`, `default + tv_simply`).

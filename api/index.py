@@ -33,6 +33,7 @@ import os
 import re
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote, unquote, urlsplit
@@ -79,6 +80,25 @@ DEFAULT_YOUTUBE_CLIENT_STRATEGIES = (
     ("default", "tv_simply"),    # lighter TV client
 )
 MAX_YOUTUBE_ATTEMPTS = 6         # total (proxy x player client) attempts per URL
+
+# "Find free proxies" (Settings > Tools > Proxy): pull candidates from public
+# lists, keep the ones YouTube actually answers through, and save them.
+DEFAULT_PROXY_LIST_URLS = (
+    "https://api.proxyscrape.com/v4/free-proxy-list/get"
+    "?request=display_proxies&protocol=http&proxy_format=ipport&format=text",
+    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+)
+# A video owned by YouTube itself, used only to prove a proxy gets through the
+# bot check. Nothing is downloaded.
+AUTO_PROXY_TEST_URL = "https://www.youtube.com/watch?v=BaW_jenozKc"
+AUTO_PROXY_MAX_CANDIDATES = 120   # candidates pulled from the lists
+AUTO_PROXY_MAX_TESTED = 90        # candidates actually probed
+AUTO_PROXY_MAX_FOUND = 6          # working proxies kept
+AUTO_PROXY_CONCURRENCY = 12
+AUTO_PROXY_PROBE_TIMEOUT = 8      # seconds per candidate
+AUTO_PROXY_TIME_BUDGET = 150      # seconds for one "find" run
 _YOUTUBE_HOSTS = ("youtube.com", "youtu.be", "youtube-nocookie.com", "youtube.googleapis.com")
 
 _http = httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0))
@@ -368,6 +388,168 @@ def delete_item(state: str, key: str) -> None:
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + "Z"
+
+
+def proxy_list_sources() -> tuple:
+    """Public proxy-list URLs to pull candidates from.
+
+    ``PROXY_LIST_URLS`` (comma or newline separated) replaces the defaults,
+    e.g. when an operator runs their own list on a private host.
+    """
+    raw = os.environ.get("PROXY_LIST_URLS")
+    if raw and raw.strip():
+        urls = [u.strip() for u in re.split(r"[\r\n,]+", raw) if u.strip()]
+        if urls:
+            return tuple(urls)
+    return DEFAULT_PROXY_LIST_URLS
+
+
+def _candidate_proxies(timeout: float = 15.0) -> list:
+    """Fetch and parse ``host:port`` candidates from every configured list."""
+    found: list = []
+
+    def fetch(url: str) -> None:
+        try:
+            resp = _http.get(url, timeout=timeout)
+            resp.raise_for_status()
+        except Exception as exc:  # noqa: BLE001 - a dead list must not fail the run
+            log.warning("proxy list %s failed: %s", url, exc)
+            return
+        for line in resp.text.splitlines():
+            candidate = _parse_proxy_line(line)
+            if candidate and candidate not in found:
+                found.append(candidate)
+
+    with ThreadPoolExecutor(max_workers=min(4, len(proxy_list_sources()))) as pool:
+        list(pool.map(fetch, proxy_list_sources()))
+    return found[:AUTO_PROXY_MAX_CANDIDATES]
+
+
+def _parse_proxy_line(line: str) -> str:
+    """Accept ``ip:port`` (the usual list format) and full proxy URLs."""
+    text = (line or "").strip().strip('"\'')
+    if not text or text.startswith("#") or " " in text:
+        return ""
+    if "<" in text or ":" not in text:
+        return ""
+    try:
+        return normalize_proxy(text)
+    except ValueError:
+        return ""
+
+
+def probe_proxy(proxy: str) -> bool:
+    """True when YouTube answers through *proxy* without a bot/IP block."""
+    import yt_dlp
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "no_color": True,
+        "noprogress": True,
+        "skip_download": True,
+        "extract_flat": "in_playlist",
+        "socket_timeout": AUTO_PROXY_PROBE_TIMEOUT,
+        "retries": 0,
+        "extractor_retries": 0,
+        "proxy": proxy,
+        "cachedir": False,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(AUTO_PROXY_TEST_URL, download=False)
+    except Exception as exc:  # noqa: BLE001 - every failure just means "no"
+        log.debug("proxy %s rejected: %s", mask_proxy(proxy), exc)
+        return False
+    return bool(info and info.get("id"))
+
+
+def find_working_proxies(limit: int = AUTO_PROXY_MAX_FOUND) -> dict:
+    """Probe public proxies until *limit* of them work, or the budget runs out."""
+    started = time.monotonic()
+    deadline = started + AUTO_PROXY_TIME_BUDGET
+    candidates = _candidate_proxies()
+    tested = 0
+    working: list = []
+    if not candidates:
+        return {"working": [], "tested": 0, "candidates": 0,
+                "msg": "Could not download any proxy list. Add a proxy manually instead."}
+
+    with ThreadPoolExecutor(max_workers=AUTO_PROXY_CONCURRENCY) as pool:
+        futures = {pool.submit(probe_proxy, proxy): proxy
+                   for proxy in candidates[:AUTO_PROXY_MAX_TESTED]}
+        for future in as_completed(futures):
+            if time.monotonic() > deadline:
+                for pending in futures:
+                    pending.cancel()
+                break
+            tested += 1
+            try:
+                ok = future.result(timeout=1)
+            except Exception:  # noqa: BLE001
+                ok = False
+            if ok:
+                proxy = futures[future]
+                if proxy not in working:
+                    working.append(proxy)
+                if len(working) >= limit:
+                    for pending in futures:
+                        pending.cancel()
+                    break
+    return {"working": working, "tested": tested, "candidates": len(candidates), "msg": None}
+
+
+def handle_auto_proxy() -> dict:
+    """Find public proxies that pass YouTube's bot check and save them."""
+    try:
+        existing_raw = get_config(PROXY_CONFIG_KEY) or ""
+        existing = parse_proxy_list(existing_raw)
+    except (StoreError, ValueError):
+        existing = []
+
+    result = find_working_proxies()
+    working = result["working"]
+    if not working:
+        if result["msg"]:
+            return {
+                "status": "error",
+                "msg": result["msg"],
+                **proxy_status_payload(existing, "settings" if existing else None),
+            }
+        return {
+            "status": "error",
+            "msg": (
+                "Tested %d free proxies and YouTube blocked all of them (free proxies are "
+                "usually already on its block list). Try again later, or add a paid "
+                "residential/mobile proxy."
+            ) % result["tested"],
+            **proxy_status_payload(existing, "settings" if existing else None),
+        }
+
+    merged = list(existing)
+    added = 0
+    for proxy in working:
+        if proxy not in merged:
+            merged.append(proxy)
+            added += 1
+    merged = merged[:MAX_PROXIES]
+    if added:
+        try:
+            set_config(PROXY_CONFIG_KEY, "\n".join(merged))
+        except StoreError as exc:
+            return {"status": "error", "msg": f"Could not save proxies: {exc}"}
+
+    if added:
+        msg = "%d working %s found (tested %d) and saved" % (
+            added, "proxy" if added == 1 else "proxies", result["tested"])
+    else:
+        msg = "The %d working %s already saved" % (
+            len(working), "proxy is" if len(working) == 1 else "proxies are")
+    return proxy_status_payload(merged, "settings") | {
+        "msg": msg,
+        "tested": result["tested"],
+        "found": len(working),
+    }
 
 
 # -- subscriptions ----------------------------------------------------------
@@ -1691,7 +1873,7 @@ UI_DIR = Path(__file__).resolve().parent / "ui"
 KNOWN_GET = {"formats", "presets", "history", "cookie-status", "proxy-status", "version", "snapshot", "subscriptions", "tick", "health"}
 KNOWN_POST = {"add", "browse", "cancel-add", "retry", "start", "delete", "subscribe",
               "subscriptions/update", "subscriptions/delete", "subscriptions/check",
-              "upload-cookies", "delete-cookies", "set-proxy", "delete-proxy", "tick"}
+              "upload-cookies", "delete-cookies", "set-proxy", "delete-proxy", "auto-proxy", "tick"}
 
 _PATH_PREFIXES = ("/api/index.py", "/api/index", "/api")
 
@@ -1877,6 +2059,8 @@ async def dispatch(request: Request):
         return JSONResponse(await asyncio.to_thread(handle_set_proxy, body.get("proxy")))
     if rest == "delete-proxy":
         return JSONResponse(await asyncio.to_thread(handle_delete_proxy))
+    if rest == "auto-proxy":
+        return JSONResponse(await asyncio.to_thread(handle_auto_proxy))
 
     return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
 

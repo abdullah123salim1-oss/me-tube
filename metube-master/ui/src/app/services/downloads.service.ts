@@ -53,6 +53,8 @@ export interface ProxyStatus extends Status {
   /** Masked proxy URLs; credentials are never sent to the browser. */
   proxies?: string[];
   source?: 'settings' | 'environment' | null;
+  tested?: number;
+  found?: number;
 }
 
 @Injectable({
@@ -313,6 +315,14 @@ export class DownloadsService {
 
   deleteProxy() {
     return this.http.post<ProxyStatus>('delete-proxy', {}).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  // Asks the server to pull public proxy lists, test them against YouTube and
+  // save the ones that get through. Can take a minute or two.
+  autoProxy() {
+    return this.http.post<ProxyStatus>('auto-proxy', {}).pipe(
       catchError(this.handleHTTPError)
     );
   }

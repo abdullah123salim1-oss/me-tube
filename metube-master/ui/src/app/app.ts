@@ -7,7 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModal, NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
+import { faSearch, faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { SwUpdate } from '@angular/service-worker';
@@ -128,6 +128,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   proxyDisplay: string[] = [];
   proxySource: ProxyStatus['source'] = null;
   proxySaving = false;
+  proxyFinding = false;
+  proxyFindNote = '';
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
   readonly folderTypeahead = viewChild<NgbTypeahead>('folderTypeahead');
@@ -217,6 +219,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faChevronRight = faChevronRight;
   faChevronDown = faChevronDown;
   faUpload = faUpload;
+  faSearch = faSearch;
   faPause = faPause;
   faPlay = faPlay;
   faShareNodes = faShareNodes;
@@ -1949,6 +1952,37 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         this.proxySaving = false;
         this.refreshProxyStatus();
         this.toasts.error('Error removing proxy.');
+      }
+    });
+  }
+
+  findFreeProxies() {
+    if (this.proxyFinding || this.proxySaving) {
+      return;
+    }
+    this.proxyFinding = true;
+    this.proxyFindNote = 'Testing free proxies against YouTube — this can take a minute…';
+    this.cdr.markForCheck();
+    this.downloads.autoProxy().subscribe({
+      next: (response) => {
+        this.proxyFinding = false;
+        if (response?.status === 'ok') {
+          this.applyProxyStatus(response);
+          this.proxyFindNote = response.msg || 'Working proxies saved.';
+          this.toasts.info(this.proxyFindNote);
+        } else {
+          this.proxyFindNote = this.formatErrorMessage(response?.msg);
+          this.refreshProxyStatus();
+          this.toasts.error(this.proxyFindNote);
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.proxyFinding = false;
+        this.proxyFindNote = 'Could not search for proxies. Try again.';
+        this.refreshProxyStatus();
+        this.toasts.error(this.proxyFindNote);
+        this.cdr.markForCheck();
       }
     });
   }
