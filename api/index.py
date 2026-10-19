@@ -35,7 +35,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 from fastapi import FastAPI, Request
@@ -57,6 +57,15 @@ TICK_LEASE_SECONDS = 240            # a lease older than this is considered stal
 STALE_ACTIVE_SECONDS = 360          # an active row quiet this long is marked failed
 MAX_PLAYLIST_ITEMS = 25
 MAX_COOKIES_BYTES = 1_000_000
+
+# Egress proxy. YouTube routinely blocks datacenter ranges (Vercel's included)
+# with "Sign in to confirm you're not a bot", so every yt-dlp call can be sent
+# through one or more proxies configured here.
+PROXY_CONFIG_KEY = "proxies"
+MAX_PROXIES = 10
+MAX_PROXY_URL_LENGTH = 500
+PROXY_ENV_VARS = ("YTDLP_PROXY", "METUBE_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")
+_ALLOWED_PROXY_SCHEMES = ("http", "https", "socks4", "socks4a", "socks5", "socks5h")
 
 _http = httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0))
 
@@ -484,15 +493,191 @@ def unsupported_features(o: dict) -> Optional[str]:
 # yt-dlp helpers
 # ---------------------------------------------------------------------------
 
-def _ydl_base() -> dict:
+def normalize_proxy(raw: Any) -> str:
+    """Validate one proxy URL and return it with an explicit scheme.
+
+    Accepts what yt-dlp accepts: ``http://``, ``https://``, ``socks4://``,
+    ``socks4a://``, ``socks5://`` and ``socks5h://``, with optional
+    ``user:pass@`` credentials. A bare ``host:port`` is treated as HTTP.
+    """
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    if any(ch in value for ch in "\r\n\t"):
+        raise ValueError("Proxy must be a single URL")
+    if len(value) > MAX_PROXY_URL_LENGTH:
+        raise ValueError("Proxy URL is too long")
+    if "://" not in value:
+        value = "http://" + value
+    parts = urlsplit(value)
+    if parts.scheme.lower() not in _ALLOWED_PROXY_SCHEMES:
+        raise ValueError(
+            "Unsupported proxy scheme '%s' (use http, https, socks4, socks4a, socks5 or socks5h)"
+            % parts.scheme
+        )
+    if not parts.hostname:
+        raise ValueError("Proxy is missing a host")
+    try:
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("Proxy has an invalid port") from exc
+    if port is None:
+        raise ValueError("Proxy is missing a port (expected e.g. http://host:8080)")
+    if not 0 < port < 65536:
+        raise ValueError("Proxy port must be between 1 and 65535")
+    return value
+
+
+def parse_proxy_list(raw: Any) -> list:
+    """Split a newline/comma separated proxy list, validating each entry."""
+    if isinstance(raw, (list, tuple)):
+        chunks = [str(item) for item in raw]
+    else:
+        chunks = re.split(r"[\r\n,]+", str(raw or ""))
+    proxies: list = []
+    for chunk in chunks:
+        proxy = normalize_proxy(chunk)
+        if proxy and proxy not in proxies:
+            proxies.append(proxy)
+    if len(proxies) > MAX_PROXIES:
+        raise ValueError("At most %d proxies can be configured" % MAX_PROXIES)
+    return proxies
+
+
+def _env_proxies() -> list:
+    for var in PROXY_ENV_VARS:
+        raw = os.environ.get(var)
+        if not raw:
+            continue
+        try:
+            proxies = parse_proxy_list(raw)
+        except ValueError as exc:
+            log.warning("ignoring %s: %s", var, exc)
+            continue
+        if proxies:
+            return proxies
+    return []
+
+
+def configured_proxies() -> tuple:
+    """Return ``(proxies, source)`` for the current yt-dlp calls.
+
+    ``source`` is ``"settings"`` when the Supabase-stored list is in use,
+    ``"environment"`` for a YTDLP_PROXY/HTTPS_PROXY style variable, or None.
+    Stored settings win over the environment so the UI can always override.
+    """
+    try:
+        raw = get_config(PROXY_CONFIG_KEY)
+    except StoreError as exc:
+        log.warning("could not read proxy settings: %s", exc)
+        raw = None
+    if raw:
+        try:
+            proxies = parse_proxy_list(raw)
+        except ValueError as exc:
+            log.warning("ignoring stored proxy settings: %s", exc)
+        else:
+            if proxies:
+                return proxies, "settings"
+    env = _env_proxies()
+    return (env, "environment") if env else ([], None)
+
+
+def mask_proxy(proxy: str) -> str:
+    """Render a proxy for the UI without leaking credentials."""
+    try:
+        parts = urlsplit(proxy)
+    except ValueError:
+        return "(invalid proxy)"
+    host = parts.hostname or parts.netloc
+    if ":" in host and not host.startswith("["):
+        host = "[%s]" % host
+    try:
+        port = parts.port
+    except ValueError:
+        return "(invalid proxy)"
+    if port:
+        host = "%s:%d" % (host, port)
+    auth = ""
+    if parts.username is not None:
+        auth = "%s:***@" % quote(parts.username or "", safe="")
+    return "%s://%s%s" % (parts.scheme, auth, host)
+
+
+_BLOCK_MARKERS = (
+    "sign in to confirm you're not a bot",
+    "sign in to confirm your age",
+    "confirm you're not a bot",
+    "confirm you are not a bot",
+    "not a bot",
+    "this video is not available in your country",
+    "the uploader has not made this video available in your country",
+    "this video is not available from your location",
+    "http error 429",
+    "too many requests",
+)
+
+
+def is_block_error(message: Any) -> bool:
+    """True when YouTube's response is an IP/cookie block rather than a bad URL."""
+    text = str(message or "").lower()
+    return any(marker in text for marker in _BLOCK_MARKERS)
+
+
+def block_error_hint(message: str, used_proxies: bool) -> str:
+    """Append actionable advice to a YouTube block error."""
+    if not is_block_error(message):
+        return message
+    if used_proxies:
+        hint = (
+            "YouTube still blocked every configured proxy. Check that the proxy is "
+            "working and not on a blocked datacenter range, or add another one under "
+            "Settings > Tools > Proxy."
+        )
+    else:
+        hint = (
+            "YouTube is blocking this server's IP address (Vercel's datacenter IPs are "
+            "flagged). Add a working proxy under Settings > Tools > Proxy "
+            "(e.g. http://user:pass@host:port or socks5://host:port), or upload fresh "
+            "cookies under Tools > Cookies, then use Retry."
+        )
+    return "%s\n\n%s" % (message, hint)
+
+
+def read_error_message(exc: Exception) -> str:
+    """Format an extraction failure for the add/browse responses."""
+    msg = str(exc).strip()[:400] or exc.__class__.__name__
+    proxies, _source = configured_proxies()
+    return block_error_hint(msg, bool(proxies))
+
+
+_UNSET = object()
+
+
+def _ydl_base(proxy: Any = _UNSET) -> dict:
     opts = {
         "quiet": True,
         "no_color": True,
         "noprogress": True,
         "socket_timeout": 30,
         "retries": 2,
+        "extractor_retries": 2,
         "nocheckcertificate": False,
     }
+    if proxy is _UNSET:
+        proxies, _source = configured_proxies()
+        proxy = proxies[0] if proxies else ""
+    if proxy:
+        opts["proxy"] = proxy
+    # Optional browser impersonation (curl-cffi is installed by requirements).
+    # Helps some extractors that fingerprint TLS but is off unless requested.
+    impersonate = os.environ.get("YTDLP_IMPERSONATE", "").strip()
+    if impersonate:
+        try:
+            from yt_dlp.networking.impersonate import ImpersonateTarget
+            opts["impersonate"] = ImpersonateTarget.from_str(impersonate)
+        except Exception as exc:  # noqa: BLE001 - opt-in nicety, never fatal
+            log.warning("ignoring YTDLP_IMPERSONATE=%r: %s", impersonate, exc)
     cookies = get_config("cookies")
     if cookies:
         path = os.path.join(TMP_ROOT, "cookies.txt")
@@ -508,37 +693,56 @@ def _ydl_base() -> dict:
 
 
 def extract_entries(url: str, playlist_item_limit: int) -> list:
-    """Flat-probe a URL: single video -> one entry; playlist/channel -> entries."""
+    """Flat-probe a URL: single video -> one entry; playlist/channel -> entries.
+
+    When several proxies are configured and YouTube answers with an IP/cookie
+    block, the next proxy is tried automatically.
+    """
     import yt_dlp
 
-    opts = _ydl_base()
-    opts.update({
-        "extract_flat": "in_playlist",
-        "skip_download": True,
-    })
-    if playlist_item_limit:
-        opts["playlistend"] = playlist_item_limit
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-    if info is None:
-        raise RuntimeError("yt-dlp returned nothing for this URL")
-    entries = info.get("entries")
-    if entries is None:
-        return [{"id": info.get("id"), "url": info.get("webpage_url") or url,
-                 "title": info.get("title"), "duration": info.get("duration")}]
-    out = []
-    for e in entries:
-        if not e:
-            continue
-        out.append({
-            "id": e.get("id"),
-            "url": e.get("webpage_url") or e.get("url") or url,
-            "title": e.get("title"),
-            "duration": e.get("duration"),
+    proxies, _source = configured_proxies()
+    attempts = proxies or [""]
+    last_error: Optional[Exception] = None
+    for index, proxy in enumerate(attempts):
+        opts = _ydl_base(proxy=proxy)
+        opts.update({
+            "extract_flat": "in_playlist",
+            "skip_download": True,
         })
-        if playlist_item_limit and len(out) >= playlist_item_limit:
-            break
-    return out
+        if playlist_item_limit:
+            opts["playlistend"] = playlist_item_limit
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as exc:  # noqa: BLE001 - retried or re-raised below
+            last_error = exc
+            if index + 1 < len(attempts) and is_block_error(exc):
+                log.warning("proxy %s blocked for %s; trying the next one",
+                            mask_proxy(proxy), url)
+                continue
+            raise
+        if info is None:
+            raise RuntimeError("yt-dlp returned nothing for this URL")
+        entries = info.get("entries")
+        if entries is None:
+            return [{"id": info.get("id"), "url": info.get("webpage_url") or url,
+                     "title": info.get("title"), "duration": info.get("duration")}]
+        out = []
+        for e in entries:
+            if not e:
+                continue
+            out.append({
+                "id": e.get("id"),
+                "url": e.get("webpage_url") or e.get("url") or url,
+                "title": e.get("title"),
+                "duration": e.get("duration"),
+            })
+            if playlist_item_limit and len(out) >= playlist_item_limit:
+                break
+        return out
+    if last_error is not None:  # pragma: no cover - the loop always re-raises
+        raise last_error
+    raise RuntimeError("no proxy attempt was made")
 
 
 class Cancelled(Exception):
@@ -646,31 +850,6 @@ def run_download(key: str, info: dict, deadline: float) -> str:
             except StoreError:
                 pass
 
-    opts = _ydl_base()
-    opts.update({
-        "format": get_format(info["download_type"], info.get("codec", "auto"),
-                             info["format"], info["quality"]),
-        "outtmpl": os.path.join(outdir, "%(title).200B.%(ext)s"),
-        "progress_hooks": [progress_hook],
-        "noplaylist": True,
-    })
-
-    if info["download_type"] == "captions":
-        lang = info.get("subtitle_language") or "en"
-        mode = info.get("subtitle_mode") or "prefer_manual"
-        opts.update({
-            "skip_download": True,
-            "writesubtitles": mode in ("prefer_manual", "manual_only", "prefer_auto"),
-            "writeautomaticsub": mode in ("prefer_auto", "auto_only", "prefer_manual"),
-            "subtitleslangs": [lang, f"{lang}.*"],
-            "subtitlesformat": "srt/vtt/best",
-        })
-    elif info["download_type"] == "thumbnail":
-        opts.update({
-            "skip_download": True,
-            "writethumbnail": True,
-        })
-
     class _Logger:
         def debug(self, msg):
             log.debug("%s", msg)
@@ -684,30 +863,79 @@ def run_download(key: str, info: dict, deadline: float) -> str:
         def error(self, msg):
             log.error("%s", msg)
 
-    opts["logger"] = _Logger()
+    proxies, _source = configured_proxies()
+    attempts = proxies or [""]
 
+    info["msg"] = None
     info["status"] = "preparing"
     upsert_item("queue", key, info)
 
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([info["url"]])
-    except Cancelled:
-        shutil.rmtree(outdir, ignore_errors=True)
-        return "canceled"
-    except TimeBudget:
-        shutil.rmtree(outdir, ignore_errors=True)
-        info["status"] = "error"
-        info["msg"] = "Stopped: the download exceeded the Vercel function time limit (5 minutes). Try a lower quality or audio."
-        info["error"] = info["msg"]
-        return "error"
-    except Exception as exc:  # noqa: BLE001 - surface any yt-dlp failure to the row
-        shutil.rmtree(outdir, ignore_errors=True)
-        msg = str(exc).strip() or exc.__class__.__name__
-        info["status"] = "error"
-        info["msg"] = msg[:2000]
-        info["error"] = info["msg"]
-        return "error"
+    for index, proxy in enumerate(attempts):
+        if index:
+            # A block can leave a partial file (/tmp state) behind; start clean.
+            shutil.rmtree(outdir, ignore_errors=True)
+            os.makedirs(outdir, exist_ok=True)
+            info["status"] = "preparing"
+            info["msg"] = ("YouTube blocked the previous proxy; retrying with proxy "
+                           f"{index + 1} of {len(attempts)}...")
+            try:
+                upsert_item("queue", key, info)
+            except StoreError:
+                pass
+
+        opts = _ydl_base(proxy=proxy)
+        opts.update({
+            "format": get_format(info["download_type"], info.get("codec", "auto"),
+                                 info["format"], info["quality"]),
+            "outtmpl": os.path.join(outdir, "%(title).200B.%(ext)s"),
+            "progress_hooks": [progress_hook],
+            "noplaylist": True,
+        })
+
+        if info["download_type"] == "captions":
+            lang = info.get("subtitle_language") or "en"
+            mode = info.get("subtitle_mode") or "prefer_manual"
+            opts.update({
+                "skip_download": True,
+                "writesubtitles": mode in ("prefer_manual", "manual_only", "prefer_auto"),
+                "writeautomaticsub": mode in ("prefer_auto", "auto_only", "prefer_manual"),
+                "subtitleslangs": [lang, f"{lang}.*"],
+                "subtitlesformat": "srt/vtt/best",
+            })
+        elif info["download_type"] == "thumbnail":
+            opts.update({
+                "skip_download": True,
+                "writethumbnail": True,
+            })
+
+        opts["logger"] = _Logger()
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([info["url"]])
+        except Cancelled:
+            shutil.rmtree(outdir, ignore_errors=True)
+            return "canceled"
+        except TimeBudget:
+            shutil.rmtree(outdir, ignore_errors=True)
+            info["status"] = "error"
+            info["msg"] = "Stopped: the download exceeded the Vercel function time limit (5 minutes). Try a lower quality or audio."
+            info["error"] = info["msg"]
+            return "error"
+        except Exception as exc:  # noqa: BLE001 - surface any yt-dlp failure to the row
+            msg = str(exc).strip() or exc.__class__.__name__
+            if index + 1 < len(attempts) and is_block_error(msg):
+                log.warning("proxy %s blocked for %s; trying the next one",
+                            mask_proxy(proxy), info["url"])
+                continue
+            shutil.rmtree(outdir, ignore_errors=True)
+            info["status"] = "error"
+            info["msg"] = block_error_hint(msg, bool(proxies))[:2000]
+            info["error"] = info["msg"]
+            return "error"
+
+        info["msg"] = None
+        break
 
     produced = []
     for root, _dirs, files in os.walk(outdir):
@@ -893,7 +1121,7 @@ def handle_add(post: dict) -> dict:
     try:
         entries = extract_entries(o["url"], o["playlist_item_limit"])
     except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "msg": f"Could not read this URL: {str(exc)[:400]}"}
+        return {"status": "error", "msg": f"Could not read this URL: {read_error_message(exc)}"}
 
     if not entries:
         return {"status": "error", "msg": "yt-dlp returned nothing for this URL"}
@@ -1025,7 +1253,7 @@ def handle_browse(post: dict) -> dict:
     try:
         entries = extract_entries(url, min(limit, MAX_PLAYLIST_ITEMS) if limit else MAX_PLAYLIST_ITEMS)
     except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "msg": f"Could not read this URL: {str(exc)[:400]}"}
+        return {"status": "error", "msg": f"Could not read this URL: {read_error_message(exc)}"}
     if not entries:
         return {"status": "error", "msg": "yt-dlp returned nothing for this URL"}
     if len(entries) == 1 and (entries[0]["url"] == url or _is_same_video(entries[0]["url"], url)):
@@ -1070,6 +1298,47 @@ def handle_delete_cookies() -> dict:
         return {"status": "error", "msg": "No uploaded cookies to delete"}
     set_config("cookies", "")
     return {"status": "ok"}
+
+
+# -- proxy settings ----------------------------------------------------------
+
+def proxy_status_payload(proxies: list, source: Optional[str]) -> dict:
+    return {
+        "status": "ok",
+        "has_proxy": bool(proxies),
+        "count": len(proxies),
+        "proxies": [mask_proxy(p) for p in proxies],
+        "source": source,
+    }
+
+
+def handle_proxy_status() -> dict:
+    proxies, source = configured_proxies()
+    return proxy_status_payload(proxies, source)
+
+
+def handle_set_proxy(value: Any) -> dict:
+    try:
+        proxies = parse_proxy_list(value)
+    except ValueError as exc:
+        return {"status": "error", "msg": str(exc)}
+    if not proxies:
+        return {"status": "error", "msg": "No proxy provided"}
+    set_config(PROXY_CONFIG_KEY, "\n".join(proxies))
+    count = len(proxies)
+    return proxy_status_payload(
+        proxies, "settings",
+    ) | {"msg": "%d %s saved" % (count, "proxy" if count == 1 else "proxies")}
+
+
+def handle_delete_proxy() -> dict:
+    set_config(PROXY_CONFIG_KEY, "")
+    proxies, source = configured_proxies()
+    if not proxies:
+        return proxy_status_payload([], None) | {"msg": "Proxy removed"}
+    return proxy_status_payload(proxies, source) | {
+        "msg": "Saved proxy removed; still using the proxy from server environment variables",
+    }
 
 
 # -- subscriptions ----------------------------------------------------------
@@ -1316,10 +1585,10 @@ app = FastAPI(title="MeTube (Vercel + Supabase)")
 # function (/, SPA deep links, asset misses).
 UI_DIR = Path(__file__).resolve().parent / "ui"
 
-KNOWN_GET = {"formats", "presets", "history", "cookie-status", "version", "snapshot", "subscriptions", "tick", "health"}
+KNOWN_GET = {"formats", "presets", "history", "cookie-status", "proxy-status", "version", "snapshot", "subscriptions", "tick", "health"}
 KNOWN_POST = {"add", "browse", "cancel-add", "retry", "start", "delete", "subscribe",
               "subscriptions/update", "subscriptions/delete", "subscriptions/check",
-              "upload-cookies", "delete-cookies", "tick"}
+              "upload-cookies", "delete-cookies", "set-proxy", "delete-proxy", "tick"}
 
 _PATH_PREFIXES = ("/api/index.py", "/api/index", "/api")
 
@@ -1443,6 +1712,9 @@ async def dispatch(request: Request):
     if method == "GET" and rest == "cookie-status":
         return JSONResponse(await asyncio.to_thread(handle_cookie_status))
 
+    if method == "GET" and rest == "proxy-status":
+        return JSONResponse(await asyncio.to_thread(handle_proxy_status))
+
     if method == "GET" and rest == "version":
         import yt_dlp
         return JSONResponse({
@@ -1498,6 +1770,10 @@ async def dispatch(request: Request):
         return JSONResponse(await asyncio.to_thread(handle_subscriptions_check, body))
     if rest == "delete-cookies":
         return JSONResponse(await asyncio.to_thread(handle_delete_cookies))
+    if rest == "set-proxy":
+        return JSONResponse(await asyncio.to_thread(handle_set_proxy, body.get("proxy")))
+    if rest == "delete-proxy":
+        return JSONResponse(await asyncio.to_thread(handle_delete_proxy))
 
     return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
 

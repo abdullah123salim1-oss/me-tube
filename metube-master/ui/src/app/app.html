@@ -596,6 +596,53 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Proxy -->
+              <div class="row g-3 mt-1">
+                <div class="col-12">
+                  <div class="action-group-label help-title"
+                    ngbPopover="Route yt-dlp through one or more proxies. YouTube blocks many datacenter IPs (Vercel included) with 'Sign in to confirm you're not a bot'. One proxy per line; if one is blocked the next is tried automatically. Supports http(s)://, socks4:// and socks5:// with optional user:pass."
+                    triggers="click" autoClose="outside" container="body">Proxy</div>
+                  <div class="input-group">
+                    <textarea class="form-control proxy-input"
+                      name="proxyUrls"
+                      rows="2"
+                      placeholder="http://user:pass@host:port or socks5://host:port — one per line"
+                      [(ngModel)]="proxyInput"
+                      [disabled]="proxySaving || addInProgress"></textarea>
+                    <button type="button" class="btn btn-primary"
+                      (click)="saveProxy()"
+                      [disabled]="proxySaving || addInProgress || !proxyInput.trim()">
+                      @if (proxySaving) {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                      }
+                      Save
+                    </button>
+                    @if (hasProxy) {
+                      <button type="button" class="btn btn-outline-danger"
+                        (click)="deleteProxy()"
+                        [disabled]="proxySaving || addInProgress"
+                        ngbTooltip="Remove saved proxy">
+                        <fa-icon [icon]="faTrashAlt" />
+                      </button>
+                    }
+                  </div>
+                  <div class="cookie-status" [class.active]="hasProxy">
+                    @if (hasProxy) {
+                      <fa-icon [icon]="faCheckCircle" class="me-1" />
+                      {{ proxyCount }} {{ proxyCount === 1 ? 'proxy' : 'proxies' }} active
+                      @if (proxySource === 'environment') {
+                        (from server environment)
+                      }
+                      @if (proxyDisplay.length) {
+                        <span class="proxy-list">{{ proxyDisplay.join(', ') }}</span>
+                      }
+                    } @else {
+                      No proxy configured — YouTube may block this server with "Sign in to confirm you're not a bot".
+                    }
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
