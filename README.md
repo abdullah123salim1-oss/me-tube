@@ -47,6 +47,28 @@ function limit) while streaming progress into Supabase.
 * Supabase free plan caps stored files at **50MB**. Bigger files are still
   downloadable: `/file/...` re-fetches the source and streams it on demand.
 
+## Deploys and the service worker
+
+The UI is an Angular PWA, so a stale service worker can pair an old
+`index.html` with a hashed JS bundle that the new deployment no longer
+serves — the page then renders blank until the site data is cleared. Three
+things keep that from happening now:
+
+* `ngsw-config.json` uses `"navigationRequestStrategy": "freshness"`, so
+  navigations are fetched from the network first (the cache is the offline
+  fallback).
+* `index.html`, `ngsw.json`, the service worker files and the manifest are
+  served/stamped `Cache-Control: no-store` (see `_serve_ui` in
+  `api/index.py` and the `headers` block in `vercel.json`); hashed bundles
+  are `immutable` for a year.
+* The UI checks for a waiting service worker on startup and whenever the tab
+  regains focus, then activates it and reloads (`setupServiceWorkerUpdates`
+  in `app.ts`).
+
+If a browser is still stuck on a build from before this change, clear the
+site data once (DevTools → Application → Storage → Clear site data); after
+that, updates apply themselves.
+
 ## Repository layout
 
 * `api/index.py` — the serverless backend (FastAPI): REST API, yt-dlp runner,
@@ -64,6 +86,7 @@ function limit) while streaming progress into Supabase.
 | `SUPABASE_KEY` | Supabase **service role** key (server-side only) |
 | `YTDLP_PROXY` | Optional proxy used when none is saved in Settings, e.g. `socks5://user:pass@host:1080` (one or comma/newline separated list). `METUBE_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` are also honoured, in that order. |
 | `YTDLP_IMPERSONATE` | Optional browser TLS impersonation target for curl-cffi, e.g. `chrome`. Helps some extractors; leave unset if unsure. |
+| `YTDLP_PLAYER_CLIENTS` | Optional YouTube player-client strategy list, e.g. `default,tv;android_vr`. Overrides the built-in rotation. |
 
 ## Fixing "Sign in to confirm you're not a bot"
 
@@ -83,7 +106,15 @@ reliable one:
    back to the browser unmasked. When several are configured they are tried
    in order until one gets past the block. Use a residential/mobile proxy:
    free public proxies and other datacenter proxies are usually blocked too.
-2. **Cookies (secondary).** Export a `cookies.txt` from a logged-in browser
+2. **Automatic player-client rotation (tried first).** Before you even need
+   a proxy, a blocked YouTube request is retried through yt-dlp's other
+   Innertube clients (`default + tv`, `android_vr`, `default + tv_simply`).
+   Which client gets past the check depends on the IP, so this alone fixes
+   the error on some deployments. The list is capped and only runs after a
+   real block, so normal downloads are unaffected. Tune it with
+   `YTDLP_PLAYER_CLIENTS` (comma = clients of one strategy, `;` = separate
+   strategies, e.g. `default,tv;android_vr`).
+3. **Cookies (secondary).** Export a `cookies.txt` from a logged-in browser
    and upload it under **Settings → Tools → Cookies**. Cookies alone often do
    not clear the bot check when the IP is flagged, but they help with
    age-restricted and private videos — especially together with a proxy.
