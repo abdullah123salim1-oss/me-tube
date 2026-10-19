@@ -162,6 +162,25 @@ class DownloadsServiceStub {
     this.proxyStatus = { status: 'ok', has_proxy: false, count: 0, proxies: [], source: null };
     return of(this.proxyStatus);
   }
+
+  autoProxyCalls = 0;
+
+  autoProxy() {
+    this.autoProxyCalls++;
+    this.proxyStatus = {
+      status: 'ok',
+      has_proxy: true,
+      count: 2,
+      proxies: ['http://found-one:8080', 'http://found-two:8080'],
+      source: 'settings',
+    };
+    return of({
+      ...this.proxyStatus,
+      found: 2,
+      tested: 40,
+      msg: '2 working proxies found (tested 40) and saved',
+    });
+  }
 }
 
 class SubscriptionsServiceStub {
@@ -322,6 +341,31 @@ describe('App', () => {
 
       expect(downloads.savedProxies).toEqual([]);
       expect(app.hasProxy).toBe(false);
+    });
+
+    it('finds free proxies and shows how many were saved', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.findFreeProxies();
+
+      expect(downloads.autoProxyCalls).toBe(1);
+      expect(app.proxyFinding).toBe(false);
+      expect(app.hasProxy).toBe(true);
+      expect(app.proxyCount).toBe(2);
+      expect(app.proxyFindNote).toContain('2 working proxies');
+    });
+
+    it('does not search twice while a search is running', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.proxyFinding = true;
+      app.findFreeProxies();
+
+      expect(downloads.autoProxyCalls).toBe(0);
     });
 
     it('removes the saved proxy', () => {
