@@ -47,6 +47,14 @@ export interface BrowseResult extends Status {
   entries?: BrowseEntry[];
 }
 
+export interface ProxyStatus extends Status {
+  has_proxy?: boolean;
+  count?: number;
+  /** Masked proxy URLs; credentials are never sent to the browser. */
+  proxies?: string[];
+  source?: 'settings' | 'environment' | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -287,6 +295,24 @@ export class DownloadsService {
 
   getCookieStatus() {
     return this.http.get<{ status: string; has_cookies: boolean }>('cookie-status').pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  getProxyStatus() {
+    return this.http.get<ProxyStatus>('proxy-status').pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  setProxy(proxy: string) {
+    return this.http.post<ProxyStatus>('set-proxy', { proxy }).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  deleteProxy() {
+    return this.http.post<ProxyStatus>('delete-proxy', {}).pipe(
       catchError(this.handleHTTPError)
     );
   }

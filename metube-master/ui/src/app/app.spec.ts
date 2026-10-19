@@ -129,6 +129,38 @@ class DownloadsServiceStub {
   deleteCookies() {
     return of({ status: 'ok' });
   }
+
+  proxyStatus = {
+    status: 'ok' as const,
+    has_proxy: false,
+    count: 0,
+    proxies: [] as string[],
+    source: null as 'settings' | 'environment' | null,
+  };
+  savedProxies: string[] = [];
+  deleteProxyCalls = 0;
+
+  getProxyStatus() {
+    return of(this.proxyStatus);
+  }
+
+  setProxy(proxy: string) {
+    this.savedProxies.push(proxy);
+    this.proxyStatus = {
+      status: 'ok',
+      has_proxy: true,
+      count: 1,
+      proxies: ['http://host:***@proxy.local:8080'],
+      source: 'settings',
+    };
+    return of(this.proxyStatus);
+  }
+
+  deleteProxy() {
+    this.deleteProxyCalls++;
+    this.proxyStatus = { status: 'ok', has_proxy: false, count: 0, proxies: [], source: null };
+    return of(this.proxyStatus);
+  }
 }
 
 class SubscriptionsServiceStub {
@@ -210,6 +242,69 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  describe('proxy settings', () => {
+    it('shows the proxies the server reports', () => {
+      downloads.proxyStatus = {
+        status: 'ok',
+        has_proxy: true,
+        count: 2,
+        proxies: ['http://a.example:8080', 'socks5://b.example:1080'],
+        source: 'settings',
+      };
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      expect(app.hasProxy).toBe(true);
+      expect(app.proxyCount).toBe(2);
+      expect(app.proxyDisplay).toEqual(['http://a.example:8080', 'socks5://b.example:1080']);
+      expect(app.proxySource).toBe('settings');
+    });
+
+    it('saves the pasted proxy list and clears the box', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.proxyInput = 'http://user:pass@host:8080\nsocks5://host:1080';
+      app.saveProxy();
+
+      expect(downloads.savedProxies).toEqual(['http://user:pass@host:8080\nsocks5://host:1080']);
+      expect(app.proxyInput).toBe('');
+      expect(app.hasProxy).toBe(true);
+    });
+
+    it('does not save an empty proxy box', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.proxyInput = '   ';
+      app.saveProxy();
+
+      expect(downloads.savedProxies).toEqual([]);
+      expect(app.hasProxy).toBe(false);
+    });
+
+    it('removes the saved proxy', () => {
+      downloads.proxyStatus = {
+        status: 'ok',
+        has_proxy: true,
+        count: 1,
+        proxies: ['http://host:8080'],
+        source: 'settings',
+      };
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.deleteProxy();
+
+      expect(downloads.deleteProxyCalls).toBe(1);
+      expect(app.hasProxy).toBe(false);
+    });
   });
 
   it('pre-fills the download folder from DEFAULT_FOLDER', () => {

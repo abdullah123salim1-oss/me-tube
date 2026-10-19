@@ -10,7 +10,7 @@ import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
+import { AddDownloadPayload, DownloadsService, ProxyStatus } from './services/downloads.service';
 import { MeTubeSocket } from './services/metube-socket.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
@@ -119,6 +119,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   checkingSelectedSubscriptions = false;
   hasCookies = false;
   cookieUploadInProgress = false;
+  proxyInput = '';
+  hasProxy = false;
+  proxyCount = 0;
+  proxyDisplay: string[] = [];
+  proxySource: ProxyStatus['source'] = null;
+  proxySaving = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
   readonly folderTypeahead = viewChild<NgbTypeahead>('folderTypeahead');
@@ -276,6 +282,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
       this.cdr.markForCheck();
     });
+    this.refreshProxyStatus();
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
     this.getYtdlOptionPresets();
@@ -1853,6 +1860,75 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.downloads.getCookieStatus().subscribe(data => {
       this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
     });
+  }
+
+  saveProxy() {
+    const proxy = this.proxyInput.trim();
+    if (!proxy || this.proxySaving) {
+      return;
+    }
+    this.proxySaving = true;
+    this.downloads.setProxy(proxy).subscribe({
+      next: (response) => {
+        this.proxySaving = false;
+        if (response?.status === 'ok') {
+          this.applyProxyStatus(response);
+          this.proxyInput = '';
+          this.toasts.info('Proxy saved. YouTube requests now go through it.');
+        } else {
+          this.toasts.error(`Error saving proxy: ${this.formatErrorMessage(response?.msg)}`);
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.proxySaving = false;
+        this.refreshProxyStatus();
+        this.toasts.error('Error saving proxy.');
+      }
+    });
+  }
+
+  deleteProxy() {
+    if (this.proxySaving) {
+      return;
+    }
+    this.proxySaving = true;
+    this.downloads.deleteProxy().subscribe({
+      next: (response) => {
+        this.proxySaving = false;
+        if (response?.status === 'ok') {
+          this.applyProxyStatus(response);
+          if (response.msg) {
+            this.toasts.info(response.msg);
+          }
+        } else {
+          this.refreshProxyStatus();
+          this.toasts.error(`Error removing proxy: ${this.formatErrorMessage(response?.msg)}`);
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.proxySaving = false;
+        this.refreshProxyStatus();
+        this.toasts.error('Error removing proxy.');
+      }
+    });
+  }
+
+  private refreshProxyStatus() {
+    this.downloads.getProxyStatus().subscribe(data => {
+      if (data?.status === 'ok') {
+        this.applyProxyStatus(data);
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  private applyProxyStatus(data: ProxyStatus) {
+    this.hasProxy = !!data.has_proxy;
+    this.proxyCount = data.count ?? 0;
+    this.proxyDisplay = data.proxies ?? [];
+    this.proxySource = data.source ?? null;
   }
 
   private updateMetrics() {
