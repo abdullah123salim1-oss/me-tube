@@ -3,6 +3,19 @@
 [MeTube](https://github.com/alexta69/metube) — a web UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp) —
 deployed on **Vercel** with **Supabase** as its backend.
 
+> ## 🆕 Instagram Downloader (Node.js) — `instagram-downloader/`
+>
+> A separate, standalone **Instagram Reels/video/photo downloader** with a
+> modern UI, built with Node.js + Express (yt-dlp under the hood plus a
+> multi-layer scraper, download proxy, demo mode). Run it with:
+>
+> ```bash
+> cd instagram-downloader && npm install && npm start   # → http://localhost:3000
+> ```
+>
+> See [`instagram-downloader/README.md`](instagram-downloader/README.md). It is
+> independent from the MeTube Vercel deployment below.
+
 ## How this deployment works
 
 The stock MeTube is a self-hosted Docker app (long-running aiohttp server,

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InstaSaver — Instagram Video & Reel Downloader</title>
+  <meta name="description" content="Download Instagram Reels, videos, photos and carousels in HD. Paste a link, preview, and save — free, no login." />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true">
+    <span class="blob blob-a"></span>
+    <span class="blob blob-b"></span>
+    <span class="blob blob-c"></span>
+  </div>
+
+  <header class="site-header">
+    <a class="brand" href="/">
+      <img src="/favicon.svg" alt="" width="34" height="34" />
+      <span>Insta<span class="grad-text">Saver</span></span>
+    </a>
+    <nav class="header-nav">
+      <a href="#how" class="nav-link">How it works</a>
+      <a href="#faq" class="nav-link">FAQ</a>
+      <button id="demoHeaderBtn" class="btn btn-ghost btn-sm" type="button">▶ Live demo</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="badge" id="engineBadge">
+        <span class="pulse-dot"></span> Reels · Videos · Photos · Carousels
+      </div>
+      <h1>Download <span class="grad-text">Instagram</span> videos<br class="hide-sm" /> in one tap</h1>
+      <p class="subtitle">
+        Paste a Reel, video, photo or carousel link — preview it instantly and save it in HD.
+        No login, no watermark nonsense, no ads.
+      </p>
+
+      <form id="fetchForm" class="fetch-card" autocomplete="off">
+        <div class="input-wrap">
+          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+          <input id="urlInput" type="text" inputmode="url" spellcheck="false"
+                 placeholder="https://www.instagram.com/reel/…" aria-label="Instagram post URL" />
+          <button id="clearBtn" class="icon-btn clear-btn" type="button" aria-label="Clear input" hidden>✕</button>
+          <button id="pasteBtn" class="icon-btn paste-btn" type="button" title="Paste from clipboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+              <rect x="8" y="2" width="8" height="4" rx="1" />
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+            </svg>
+            Paste
+          </button>
+        </div>
+        <button id="fetchBtn" class="btn btn-primary" type="submit">
+          <span class="btn-label">Fetch video</span>
+          <span class="spinner" hidden></span>
+        </button>
+      </form>
+
+      <p class="helper-text">
+        Works with <code>/reel/</code>, <code>/reels/</code>, <code>/p/</code>, <code>/tv/</code> and share links ·
+        <button id="demoHeroLink" class="link-btn" type="button">Try the offline demo →</button>
+      </p>
+
+      <div id="errorBox" class="error-box" hidden>
+        <div class="error-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               width="18" height="18" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span id="errorMsg">Something went wrong</span>
+        </div>
+        <p id="errorHint" class="error-hint" hidden></p>
+        <details id="errorDetails" class="error-details" hidden>
+          <summary>Technical details</summary>
+          <ul id="errorTried"></ul>
+        </details>
+        <button id="demoErrorBtn" class="btn btn-ghost btn-sm" type="button">See UI with demo data instead</button>
+      </div>
+    </section>
+
+    <!-- RESULT -->
+    <section id="resultSection" class="result-section" hidden aria-live="polite">
+      <div id="skeleton" class="skeleton-card" hidden>
+        <div class="sk sk-media"></div>
+        <div class="sk-lines">
+          <div class="sk sk-line w60"></div>
+          <div class="sk sk-line w90"></div>
+          <div class="sk sk-line w40"></div>
+        </div>
+      </div>
+      <div id="resultCard" class="result-card" hidden></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="historySection" class="history-section" hidden>
+      <div class="section-title-row">
+        <h2>Recent</h2>
+        <button id="clearHistoryBtn" class="link-btn" type="button">Clear</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section id="how" class="how-section">
+      <h2>How it works</h2>
+      <div class="steps">
+        <article class="step-card">
+          <div class="step-num">1</div>
+          <h3>Copy the link</h3>
+          <p>On Instagram, tap <strong>⋯ → Link</strong> (or “Share → Copy link”) on any public Reel, video, photo or carousel.</p>
+        </article>
+        <article class="step-card">
+          <div class="step-num">2</div>
+          <h3>Paste &amp; fetch</h3>
+          <p>Drop the link above. We resolve the post and show a real preview with every quality option we can find.</p>
+        </article>
+        <article class="step-card">
+          <div class="step-num">3</div>
+          <h3>Save in HD</h3>
+          <p>Hit download — the file streams through our proxy, so it saves straight to your device in original quality.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="faq-section">
+      <h2>FAQ</h2>
+      <details>
+        <summary>Which posts are supported?</summary>
+        <p>Public Reels, videos, photos and carousels (<code>/reel/</code>, <code>/reels/</code>, <code>/p/</code>, <code>/tv/</code>, and <code>/share/</code> links). Private accounts and stories need a login and are not supported.</p>
+      </details>
+      <details>
+        <summary>Is the quality original?</summary>
+        <p>Yes — we link the file straight from Instagram’s CDN and never re-encode it. When multiple qualities exist, you can pick one before downloading.</p>
+      </details>
+      <details>
+        <summary>Why does a link sometimes fail?</summary>
+        <p>Instagram blocks datacenter IPs and changes its page structure often. Running this app on your own machine (npm start → localhost:3000) is the most reliable setup.</p>
+      </details>
+      <details>
+        <summary>Is this legal?</summary>
+        <p>Download only content you own or have permission to save. Respect creators’ copyrights and Instagram’s Terms of Use — this tool is for personal use.</p>
+      </details>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>InstaSaver · built with Node.js — not affiliated with Instagram or Meta. Files belong to their owners.</p>
+  </footer>
+
+  <div id="toastRoot" class="toast-root" aria-live="polite"></div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

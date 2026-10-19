@@ -1,0 +1,28 @@
+{
+  "name": "instagram-video-downloader",
+  "version": "1.0.0",
+  "description": "Download Instagram Reels, videos, photos and carousels with a clean web UI. Node.js + Express backend with yt-dlp and multi-layer scraper.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "instagram",
+    "reels",
+    "video-downloader",
+    "express",
+    "yt-dlp"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "optionalDependencies": {
+    "youtube-dl-exec": "^3.1.17"
+  }
+}
