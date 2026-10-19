@@ -7,6 +7,7 @@ import { AddDownloadPayload, DownloadsService } from './services/downloads.servi
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { CookieService } from 'ngx-cookie-service';
+import { SwUpdate } from '@angular/service-worker';
 import { Download, FormatCatalog } from './interfaces';
 
 const choice = (def: string, ...pairs: [string, string][]) => ({
@@ -189,6 +190,23 @@ class SubscriptionsServiceStub {
   }
 }
 
+class SwUpdateStub {
+  isEnabled = true;
+  versionUpdates = new Subject<{ type: string }>();
+  checks = 0;
+  activated = 0;
+
+  checkForUpdate() {
+    this.checks++;
+    return Promise.resolve(true);
+  }
+
+  activateUpdate() {
+    this.activated++;
+    return Promise.resolve();
+  }
+}
+
 class CookieServiceStub {
   private cookies = new Map<string, string>();
 
@@ -207,6 +225,7 @@ class CookieServiceStub {
 
 describe('App', () => {
   let downloads: DownloadsServiceStub;
+  let swUpdate: SwUpdateStub;
 
   beforeEach(async () => {
     Object.defineProperty(window, 'matchMedia', {
@@ -222,10 +241,12 @@ describe('App', () => {
       })),
     });
     downloads = new DownloadsServiceStub();
+    swUpdate = new SwUpdateStub();
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [
         { provide: DownloadsService, useValue: downloads },
+        { provide: SwUpdate, useValue: swUpdate },
         { provide: SubscriptionsService, useClass: SubscriptionsServiceStub },
         { provide: CookieService, useClass: CookieServiceStub },
         {
@@ -242,6 +263,21 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  it('checks for a service worker update on startup, so stale builds never stick', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(swUpdate.checks).toBeGreaterThan(0);
+  });
+
+  it('does nothing service-worker related when the service worker is disabled', () => {
+    swUpdate.isEnabled = false;
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(swUpdate.checks).toBe(0);
   });
 
   describe('proxy settings', () => {

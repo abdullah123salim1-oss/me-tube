@@ -7,10 +7,118 @@
     }
   },
   "rewrites": [
-    { "source": "/api/:apipath*", "destination": "/api" },
-    { "source": "/file/:filepath*", "destination": "/api" },
-    { "source": "/:name(add|browse|cancel-add|retry|start|delete|presets|formats|history|version|cookie-status|upload-cookies|delete-cookies|proxy-status|set-proxy|delete-proxy|subscribe|subscriptions|snapshot|tick|health)", "destination": "/api" },
-    { "source": "/:name(subscriptions)/:rest(update|delete|check)", "destination": "/api" },
-    { "source": "/:uipath((?!api/|file/).*)", "destination": "/api" }
+    {
+      "source": "/api/:apipath*",
+      "destination": "/api"
+    },
+    {
+      "source": "/file/:filepath*",
+      "destination": "/api"
+    },
+    {
+      "source": "/:name(add|browse|cancel-add|retry|start|delete|presets|formats|history|version|cookie-status|upload-cookies|delete-cookies|proxy-status|set-proxy|delete-proxy|subscribe|subscriptions|snapshot|tick|health)",
+      "destination": "/api"
+    },
+    {
+      "source": "/:name(subscriptions)/:rest(update|delete|check)",
+      "destination": "/api"
+    },
+    {
+      "source": "/:uipath((?!api/|file/).*)",
+      "destination": "/api"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/ngsw.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/ngsw-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/custom-service-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/safety-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/worker-basic.min.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        }
+      ]
+    }
   ]
 }

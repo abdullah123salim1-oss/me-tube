@@ -67,6 +67,20 @@ MAX_PROXY_URL_LENGTH = 500
 PROXY_ENV_VARS = ("YTDLP_PROXY", "METUBE_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")
 _ALLOWED_PROXY_SCHEMES = ("http", "https", "socks4", "socks4a", "socks5", "socks5h")
 
+# yt-dlp picks its YouTube "player client" from a set of Innertube apps. Which
+# one gets past YouTube's bot check depends on the IP (and changes over time),
+# so a blocked attempt is retried with a different client before giving up.
+# The first strategy is yt-dlp's own default, so nothing changes unless a
+# block actually happens.
+DEFAULT_YOUTUBE_CLIENT_STRATEGIES = (
+    (),                          # yt-dlp defaults
+    ("default", "tv"),           # TV app: often passes datacenter IPs
+    ("android_vr",),             # VR app: usually needs no PO token
+    ("default", "tv_simply"),    # lighter TV client
+)
+MAX_YOUTUBE_ATTEMPTS = 6         # total (proxy x player client) attempts per URL
+_YOUTUBE_HOSTS = ("youtube.com", "youtu.be", "youtube-nocookie.com", "youtube.googleapis.com")
+
 _http = httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0))
 
 
@@ -604,6 +618,58 @@ def mask_proxy(proxy: str) -> str:
     return "%s://%s%s" % (parts.scheme, auth, host)
 
 
+def is_youtube_url(url: Any) -> bool:
+    """True for youtube.com / youtu.be style URLs (the only ones where the
+    Innertube player-client rotation makes sense)."""
+    try:
+        host = (urlsplit(str(url or "")).hostname or "").lower()
+    except ValueError:
+        return False
+    return any(host == h or host.endswith("." + h) for h in _YOUTUBE_HOSTS)
+
+
+def youtube_client_strategies() -> tuple:
+    """Ordered ``player_client`` strategies to try for YouTube URLs.
+
+    ``YTDLP_PLAYER_CLIENTS`` overrides the list: comma separates the clients
+    of one strategy, ``;`` separates strategies, e.g.
+    ``default,tv;android_vr``. An empty item means "yt-dlp defaults".
+    """
+    raw = os.environ.get("YTDLP_PLAYER_CLIENTS")
+    if raw and raw.strip():
+        strategies = []
+        for group in raw.split(";"):
+            clients = tuple(c.strip() for c in group.split(",") if c.strip())
+            if clients and clients not in strategies:
+                strategies.append(clients)
+        if strategies:
+            return tuple(strategies)
+    return DEFAULT_YOUTUBE_CLIENT_STRATEGIES
+
+
+def request_attempts(url: Any) -> list:
+    """(proxy, player_client_strategy) pairs to try in order.
+
+    A block is usually IP- or client-related, so every configured proxy is
+    combined with each client strategy when several proxies are set; the list
+    is capped so one bad URL cannot burn the whole function time budget.
+    """
+    proxies, _source = configured_proxies()
+    proxies = proxies or [""]
+    strategies = youtube_client_strategies() if is_youtube_url(url) else [()]
+    combos = [(proxy, clients) for proxy in proxies for clients in strategies]
+    return combos[:MAX_YOUTUBE_ATTEMPTS]
+
+
+def describe_attempt(proxy: str, clients: tuple) -> str:
+    parts = []
+    if proxy:
+        parts.append("proxy " + mask_proxy(proxy))
+    if clients:
+        parts.append("player client " + ",".join(clients))
+    return " / ".join(parts) or "default settings"
+
+
 _BLOCK_MARKERS = (
     "sign in to confirm you're not a bot",
     "sign in to confirm your age",
@@ -637,7 +703,8 @@ def block_error_hint(message: str, used_proxies: bool) -> str:
     else:
         hint = (
             "YouTube is blocking this server's IP address (Vercel's datacenter IPs are "
-            "flagged). Add a working proxy under Settings > Tools > Proxy "
+            "flagged) and every automatic player-client attempt was refused. Add a "
+            "working proxy under Settings > Tools > Proxy "
             "(e.g. http://user:pass@host:port or socks5://host:port), or upload fresh "
             "cookies under Tools > Cookies, then use Retry."
         )
@@ -654,7 +721,7 @@ def read_error_message(exc: Exception) -> str:
 _UNSET = object()
 
 
-def _ydl_base(proxy: Any = _UNSET) -> dict:
+def _ydl_base(proxy: Any = _UNSET, clients: tuple = ()) -> dict:
     opts = {
         "quiet": True,
         "no_color": True,
@@ -669,6 +736,10 @@ def _ydl_base(proxy: Any = _UNSET) -> dict:
         proxy = proxies[0] if proxies else ""
     if proxy:
         opts["proxy"] = proxy
+    if clients:
+        # player_client only means something to the YouTube extractor; other
+        # extractors ignore the key.
+        opts["extractor_args"] = {"youtube": {"player_client": list(clients)}}
     # Optional browser impersonation (curl-cffi is installed by requirements).
     # Helps some extractors that fingerprint TLS but is off unless requested.
     impersonate = os.environ.get("YTDLP_IMPERSONATE", "").strip()
@@ -695,16 +766,15 @@ def _ydl_base(proxy: Any = _UNSET) -> dict:
 def extract_entries(url: str, playlist_item_limit: int) -> list:
     """Flat-probe a URL: single video -> one entry; playlist/channel -> entries.
 
-    When several proxies are configured and YouTube answers with an IP/cookie
-    block, the next proxy is tried automatically.
+    A YouTube IP/client block is retried with the next configured proxy or
+    Innertube player client (see request_attempts); anything else fails fast.
     """
     import yt_dlp
 
-    proxies, _source = configured_proxies()
-    attempts = proxies or [""]
+    attempts = request_attempts(url)
     last_error: Optional[Exception] = None
-    for index, proxy in enumerate(attempts):
-        opts = _ydl_base(proxy=proxy)
+    for index, (proxy, clients) in enumerate(attempts):
+        opts = _ydl_base(proxy=proxy, clients=clients)
         opts.update({
             "extract_flat": "in_playlist",
             "skip_download": True,
@@ -717,8 +787,8 @@ def extract_entries(url: str, playlist_item_limit: int) -> list:
         except Exception as exc:  # noqa: BLE001 - retried or re-raised below
             last_error = exc
             if index + 1 < len(attempts) and is_block_error(exc):
-                log.warning("proxy %s blocked for %s; trying the next one",
-                            mask_proxy(proxy), url)
+                log.warning("%s blocked for %s; trying the next attempt",
+                            describe_attempt(proxy, clients), url)
                 continue
             raise
         if info is None:
@@ -742,7 +812,7 @@ def extract_entries(url: str, playlist_item_limit: int) -> list:
         return out
     if last_error is not None:  # pragma: no cover - the loop always re-raises
         raise last_error
-    raise RuntimeError("no proxy attempt was made")
+    raise RuntimeError("no download attempt was made")
 
 
 class Cancelled(Exception):
@@ -864,26 +934,27 @@ def run_download(key: str, info: dict, deadline: float) -> str:
             log.error("%s", msg)
 
     proxies, _source = configured_proxies()
-    attempts = proxies or [""]
+    attempts = request_attempts(info["url"])
 
     info["msg"] = None
     info["status"] = "preparing"
     upsert_item("queue", key, info)
 
-    for index, proxy in enumerate(attempts):
+    for index, (proxy, clients) in enumerate(attempts):
         if index:
             # A block can leave a partial file (/tmp state) behind; start clean.
             shutil.rmtree(outdir, ignore_errors=True)
             os.makedirs(outdir, exist_ok=True)
             info["status"] = "preparing"
-            info["msg"] = ("YouTube blocked the previous proxy; retrying with proxy "
-                           f"{index + 1} of {len(attempts)}...")
+            info["msg"] = ("YouTube blocked the previous attempt; retrying with "
+                           f"{describe_attempt(proxy, clients)} "
+                           f"({index + 1} of {len(attempts)})...")
             try:
                 upsert_item("queue", key, info)
             except StoreError:
                 pass
 
-        opts = _ydl_base(proxy=proxy)
+        opts = _ydl_base(proxy=proxy, clients=clients)
         opts.update({
             "format": get_format(info["download_type"], info.get("codec", "auto"),
                                  info["format"], info["quality"]),
@@ -925,8 +996,8 @@ def run_download(key: str, info: dict, deadline: float) -> str:
         except Exception as exc:  # noqa: BLE001 - surface any yt-dlp failure to the row
             msg = str(exc).strip() or exc.__class__.__name__
             if index + 1 < len(attempts) and is_block_error(msg):
-                log.warning("proxy %s blocked for %s; trying the next one",
-                            mask_proxy(proxy), info["url"])
+                log.warning("%s blocked for %s; trying the next attempt",
+                            describe_attempt(proxy, clients), info["url"])
                 continue
             shutil.rmtree(outdir, ignore_errors=True)
             info["status"] = "error"
@@ -1552,6 +1623,38 @@ def _stream_from_source(info: dict):
     )
 
 
+# Build-output files that pin the app to one deployment. If a browser (or the
+# Angular service worker) keeps serving a stale copy of these, index.html asks
+# for a JS bundle that no longer exists and the page renders blank, so they are
+# always revalidated.
+_NO_STORE_UI_FILES = {
+    "index.html",
+    "ngsw.json",
+    "ngsw-worker.js",
+    "custom-service-worker.js",
+    "safety-worker.js",
+    "worker-basic.min.js",
+    "manifest.webmanifest",
+}
+
+# Angular names hashed bundles "<name>-<HASH>.js"; those never change content
+# under the same name, so they can be cached for a year.
+_HASHED_ASSET_RE = re.compile(r"^[^/]+-[A-Za-z0-9_]{8,}\.(?:js|css)$")
+
+
+def _ui_cache_headers(rel: str) -> dict:
+    name = Path(rel).name
+    if name in _NO_STORE_UI_FILES or not rel:
+        return {"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
+    if _HASHED_ASSET_RE.match(name):
+        return {"Cache-Control": "public, max-age=31536000, immutable"}
+    return {"Cache-Control": "public, max-age=0, must-revalidate"}
+
+
+def _ui_file_response(path: Path, rel: str, media_type: str) -> FileResponse:
+    return FileResponse(path, media_type=media_type, headers=_ui_cache_headers(rel))
+
+
 def _serve_ui(rel: str):
     """Serve a static UI file from api/ui (fallback when the request
     reaches the function instead of the CDN). SPA paths resolve to
@@ -1564,12 +1667,12 @@ def _serve_ui(rel: str):
         return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
     if candidate.is_file():
         mt = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
-        return FileResponse(candidate, media_type=mt)
+        return _ui_file_response(candidate, rel, mt)
     # Extension-less paths are SPA routes -> index.html; unknown assets 404.
     if "." not in Path(rel).name:
         index = UI_DIR / "index.html"
         if index.is_file():
-            return FileResponse(index, media_type="text/html")
+            return _ui_file_response(index, "index.html", "text/html")
     return JSONResponse({"status": "error", "msg": "not found"}, status_code=404)
 
 

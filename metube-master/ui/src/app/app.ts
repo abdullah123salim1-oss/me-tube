@@ -10,6 +10,7 @@ import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
+import { SwUpdate } from '@angular/service-worker';
 import { AddDownloadPayload, DownloadsService, ProxyStatus } from './services/downloads.service';
 import { MeTubeSocket } from './services/metube-socket.service';
 import { SubscriptionsService } from './services/subscriptions.service';
@@ -68,6 +69,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   private destroyRef = inject(DestroyRef);
   private modal = inject(NgbModal);
+  private swUpdate = inject(SwUpdate, { optional: true });
+  private visibilityListener?: () => void;
 
   addUrl!: string;
   // The server's catalog of download options (app/format_catalog.py); the
@@ -287,6 +290,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.getYtdlOptionsUpdateTime();
     this.getYtdlOptionPresets();
     this.setTheme(this.activeTheme!);
+    this.setupServiceWorkerUpdates();
 
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
   }
@@ -315,6 +319,40 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       clearInterval(this.liveCountdownTimer);
     }
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
+    if (this.visibilityListener) {
+      document.removeEventListener('visibilitychange', this.visibilityListener);
+    }
+  }
+
+  // Service-worker updates. index.html names the hashed JS bundle of the
+  // deploy that produced it, so a stale pair (old index.html, new build on the
+  // server) renders a blank page. Activating a waiting build and reloading as
+  // soon as one is downloaded keeps the two in step.
+  private setupServiceWorkerUpdates() {
+    const sw = this.swUpdate;
+    if (!sw?.isEnabled) {
+      return;
+    }
+    sw.versionUpdates.pipe(
+      filter(event => event.type === 'VERSION_READY'),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe(() => {
+      sw.activateUpdate().then(() => document.location.reload()).catch(() => { /* ignore */ });
+    });
+    const checkForUpdate = () => {
+      sw.checkForUpdate().catch(() => { /* offline or server hiccup */ });
+    };
+    checkForUpdate();
+    // Browsers only re-check on navigation; also do it when the tab is
+    // brought back to the foreground, at most every five minutes.
+    let lastCheck = Date.now();
+    this.visibilityListener = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastCheck > 5 * 60 * 1000) {
+        lastCheck = Date.now();
+        checkForUpdate();
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityListener);
   }
 
   // keyvalue comparator that preserves insertion order (Angular's keyvalue
